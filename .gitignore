@@ -6,7 +6,8 @@
 # Node / Vite
 node_modules/
 web/dist/
-internal/server/dist/
+# internal/server/dist is tracked: it holds the built UI assets embedded
+# into the lgit binary via embed.FS.
 
 # Local data
 *.db

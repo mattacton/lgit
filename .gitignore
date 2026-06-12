@@ -1,0 +1,17 @@
+# Go
+/lgit
+*.test
+*.out
+
+# Node / Vite
+node_modules/
+web/dist/
+internal/server/dist/
+
+# Local data
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editor
+.DS_Store

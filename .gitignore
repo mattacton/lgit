@@ -16,3 +16,6 @@ web/dist/
 
 # OS / editor
 .DS_Store
+
+# Local Claude Code config (personal, machine-specific permissions)
+.claude/settings.local.json

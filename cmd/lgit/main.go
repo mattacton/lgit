@@ -217,10 +217,11 @@ func cmdPRList(args []string) error {
 func cmdPRView(args []string) error {
 	fs := flag.NewFlagSet("pr view", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "output JSON")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
-	pr, st, repo, err := prByArg(fs.Args())
+	pr, st, repo, err := prByArg(pos)
 	if err != nil {
 		return err
 	}
@@ -256,10 +257,11 @@ func cmdPRComments(args []string) error {
 	fs := flag.NewFlagSet("pr comments", flag.ContinueOnError)
 	unresolved := fs.Bool("unresolved", false, "only unresolved threads")
 	asJSON := fs.Bool("json", false, "output JSON (agent contract)")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
-	pr, st, _, err := prByArg(fs.Args())
+	pr, st, _, err := prByArg(pos)
 	if err != nil {
 		return err
 	}
@@ -295,10 +297,10 @@ func cmdPRComments(args []string) error {
 func cmdPRReply(args []string) error {
 	fs := flag.NewFlagSet("pr reply", flag.ContinueOnError)
 	author := fs.String("author", "agent", "comment author (user|agent)")
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
-	rest := fs.Args()
 	if len(rest) < 2 {
 		return fmt.Errorf("usage: lgit pr reply <thread-id> <body>")
 	}
@@ -371,7 +373,8 @@ func cmdMerge(args []string) error {
 	squash := fs.Bool("squash", false, "squash head into one commit on base")
 	merge := fs.Bool("merge", false, "create a merge commit")
 	cleanup := fs.Bool("cleanup", false, "remove the PR worktree and delete its branch")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
 	mode := git.MergeRebase
@@ -391,7 +394,7 @@ func cmdMerge(args []string) error {
 		return fmt.Errorf("--rebase, --squash and --merge are mutually exclusive")
 	}
 
-	pr, st, repo, err := prByArg(fs.Args())
+	pr, st, repo, err := prByArg(pos)
 	if err != nil {
 		return err
 	}
@@ -430,6 +433,24 @@ func cmdMerge(args []string) error {
 }
 
 // --- shared helpers ---
+
+// parseFlagsAnywhere parses fs against args, allowing flags to appear after
+// positional arguments (stdlib flag stops at the first positional). Returns
+// the positional arguments in order.
+func parseFlagsAnywhere(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
+}
 
 // prByArg resolves args[0] as a PR number and returns the PR plus open
 // store/repo handles. Caller closes the store.

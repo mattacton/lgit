@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"lgit/internal/git"
+	"lgit/internal/mcp"
 	"lgit/internal/server"
 	"lgit/internal/store"
 )
@@ -28,6 +30,7 @@ Usage:
                                                  reply to a thread
   lgit pr resolve <thread-id>                    resolve a thread
   lgit serve [--port 7333]                       start the web review UI + JSON API
+  lgit mcp                                       serve MCP tools over stdio (agent integration)
   lgit merge <number> [--rebase|--squash|--merge] [--cleanup]
                                                  integrate the PR (default: rebase)
 `
@@ -69,6 +72,8 @@ func run(args []string) error {
 		}
 	case "serve":
 		return cmdServe(args[1:])
+	case "mcp":
+		return cmdMCP(args[1:])
 	case "merge":
 		return cmdMerge(args[1:])
 	case "help", "-h", "--help":
@@ -365,6 +370,21 @@ func cmdServe(args []string) error {
 	}
 	defer st.Close()
 	return server.New(st, repo).ListenAndServe(*port)
+}
+
+// cmdMCP serves MCP over stdio. Unlike other commands it must not require a
+// repo or DB at startup: it may be registered user-wide in an MCP client and
+// launched from any directory, so tools resolve (and error) per call.
+func cmdMCP(args []string) error {
+	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	return mcp.Serve(context.Background(), cwd)
 }
 
 func cmdMerge(args []string) error {

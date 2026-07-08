@@ -85,9 +85,13 @@ badge when `anchor_sha` ≠ current `head_sha` and the anchored line changed (de
 only, no auto-migrate in v1).
 
 ### 3. MCP server
-Exposed by `lgit serve` (or `lgit mcp` over stdio): `list_prs`, `get_pr`,
+`lgit mcp` (stdio, official `modelcontextprotocol/go-sdk`): `list_prs`, `get_pr`,
 `get_unresolved_comments(pr)`, `reply_comment(thread, body)`,
-`resolve_comment(thread)`, `mark_pr_ready(pr)`.
+`resolve_comment(thread)`, `mark_pr_ready(pr)`. `mark_pr_ready` flips
+`changes_requested` → `open` (no new state; the review history distinguishes
+re-reviews). Repo/store are resolved per tool call so the server starts cleanly
+outside lgit repos (safe for user-wide registration). HTTP-transport MCP via
+`lgit serve` deferred until needed.
 
 ## The loop
 

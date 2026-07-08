@@ -25,6 +25,7 @@ cmd/lgit/            CLI entry point
 internal/git/        worktree detection, merge-base, diff range, merge/cleanup
 internal/store/      SQLite schema + queries (modernc.org/sqlite)
 internal/server/     net/http JSON API + embedded web UI
+internal/mcp/        MCP server (official modelcontextprotocol/go-sdk, stdio)
 internal/server/dist built web assets, embedded via embed.FS (checked in — see below)
 web/                 React + Vite + Shiki frontend source
 docs/SPEC.md         design doc
@@ -114,10 +115,34 @@ lgit merge <number> --cleanup          # default --rebase; --squash / --merge av
 
 Run `lgit help` for the full command list.
 
+## MCP server (agent integration)
+
+`lgit mcp` serves the agent side of the review loop as MCP tools over stdio:
+`list_prs`, `get_pr`, `get_unresolved_comments`, `reply_comment`,
+`resolve_comment`, and `mark_pr_ready` (flips a `changes_requested` PR back to
+`open` once the agent has addressed feedback, signalling it's the reviewer's
+turn again).
+
+To register it in Claude Code for yourself across all repos — without adding
+any config to the repo or affecting other devs:
+
+```bash
+claude mcp add --scope user lgit -- lgit mcp
+```
+
+(Use `--scope project` instead if a team explicitly wants a shared `.mcp.json`.)
+
+A user-wide registration is safe because the server starts from any directory
+and resolves the repo *per tool call*: outside a git repo, or in one where
+`lgit init` hasn't been run, the server still starts cleanly and each tool
+returns an error saying so. Since all worktrees of a repo share one lgit DB,
+agents in different worktrees all see the same PRs.
+
 ## Testing
 
-Go unit tests cover the git plumbing (against a temp repo with real worktrees) and
-the store CRUD:
+Go unit tests cover the git plumbing (against a temp repo with real worktrees),
+the store CRUD, the HTTP API (`httptest` against real scratch repos), and the MCP
+tools (in-process MCP client over in-memory transports):
 
 ```bash
 go build ./... && go vet ./... && go test ./...

@@ -19,3 +19,4 @@ web/dist/
 
 # Local Claude Code config (personal, machine-specific permissions)
 .claude/settings.local.json
+.claude/

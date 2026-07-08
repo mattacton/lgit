@@ -1,6 +1,6 @@
 # lgit — Local-Only PR Review for Agent Worktrees
 
-> Source of truth for the design. Status: approved, pre-implementation (Phase 1 not yet started).
+> Source of truth for the design. Status: Phase 1 (MVP core loop) complete; Phase 2 (agent integration) not yet started.
 
 ## Context
 

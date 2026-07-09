@@ -17,6 +17,9 @@ function loadViewed(number) {
     }
 }
 
+const LARGE_PR_BYTES = 400_000;
+const LARGE_PR_FILES = 20;
+
 export default function PRDetail({number}) {
     const [data, setData] = useState(null); // {pr, files}
     const [threads, setThreads] = useState([]);
@@ -118,6 +121,8 @@ export default function PRDetail({number}) {
         ? files.filter(f => (f.new_path || f.old_path).toLowerCase().includes(filter.toLowerCase()))
         : files;
     const unresolvedCount = threads.filter(t => !t.resolved).length;
+    const totalPatchBytes = files.reduce((sum, f) => sum + (f.patch ? f.patch.length : 0), 0);
+    const defaultCollapsed = files.length > LARGE_PR_FILES || totalPatchBytes > LARGE_PR_BYTES;
 
     return (
         <main className="pr-detail">
@@ -217,6 +222,11 @@ export default function PRDetail({number}) {
                 </aside>
 
                 <div className="diff-column">
+                    {defaultCollapsed && (
+                        <div className="diff-scope-note">
+                            Large diff detected, so files start collapsed and render only when opened.
+                        </div>
+                    )}
                     {diffScope === 'last-review' && (
                         <div className="diff-scope-note">
                             {lastReview && lastReview.head_sha
@@ -234,6 +244,7 @@ export default function PRDetail({number}) {
                                 viewMode={viewMode}
                                 threads={threadsByFile.get(path) || []}
                                 isViewed={!!viewed[path]}
+                                defaultCollapsed={defaultCollapsed}
                                 onToggleViewed={() => toggleViewed(path)}
                                 onThreadsChanged={reloadThreads}
                             />

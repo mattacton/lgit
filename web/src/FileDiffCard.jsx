@@ -5,6 +5,26 @@ import {CommentThread, CommentForm} from './CommentThread.jsx';
 import {fileAnchor} from './FileTree.jsx';
 import {langForPath, shikiRefractor} from './shiki.js';
 
+const LARGE_PATCH_BYTES = 200_000;
+const LARGE_LINE_BYTES = 20_000;
+const HIGHLIGHT_PATCH_BYTES = 80_000;
+const HIGHLIGHT_LINE_BYTES = 5_000;
+
+function patchInfo(patch) {
+    if (!patch) return {bytes: 0, maxLineBytes: 0};
+    let maxLineBytes = 0;
+    for (const line of patch.split('\n')) {
+        maxLineBytes = Math.max(maxLineBytes, line.length);
+    }
+    return {bytes: patch.length, maxLineBytes};
+}
+
+function formatBytes(bytes) {
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${bytes} B`;
+}
+
 // Renders custom shiki tokens (with inline colors) and falls back to the
 // default renderer for everything else (text, edit marks, ...).
 function renderToken(token, defaultRender, i) {
@@ -41,35 +61,42 @@ function lineOfChange(change, side) {
 }
 
 export default function FileDiffCard({
-    prNumber, file, viewMode, threads, isViewed, onToggleViewed, onThreadsChanged,
+    prNumber, file, viewMode, threads, isViewed, defaultCollapsed, onToggleViewed, onThreadsChanged,
 }) {
     const path = file.new_path || file.old_path;
-    const [collapsed, setCollapsed] = useState(isViewed);
+    const [collapsed, setCollapsed] = useState(isViewed || defaultCollapsed);
     const [pending, setPending] = useState(null); // {changeKey, side, line}
     const [tokens, setTokens] = useState(null);
+    const [showLargeDiff, setShowLargeDiff] = useState(false);
+
+    const info = useMemo(() => patchInfo(file.patch), [file.patch]);
+    const tooLarge = info.bytes > LARGE_PATCH_BYTES || info.maxLineBytes > LARGE_LINE_BYTES;
+    const skipHighlight = info.bytes > HIGHLIGHT_PATCH_BYTES || info.maxLineBytes > HIGHLIGHT_LINE_BYTES;
+    const renderDiff = !collapsed && (!tooLarge || showLargeDiff);
 
     const parsed = useMemo(() => {
+        if (!renderDiff) return null;
         if (file.binary || !file.patch) return null;
         try {
             return parseDiff(file.patch)[0];
         } catch {
             return null;
         }
-    }, [file]);
+    }, [file, renderDiff]);
 
     const hunks = parsed ? parsed.hunks : [];
     const diffType = parsed ? parsed.type : 'modify';
 
     // Viewed checkbox collapses the file, like GitHub.
     useEffect(() => {
-        setCollapsed(isViewed);
-    }, [isViewed]);
+        setCollapsed(isViewed || defaultCollapsed);
+    }, [isViewed, defaultCollapsed]);
 
     // Tokenize with Shiki (async); fall back to plain text + word-diff marks.
     useEffect(() => {
         let cancelled = false;
         setTokens(null);
-        if (!hunks.length) return undefined;
+        if (!hunks.length || skipHighlight) return undefined;
         (async () => {
             const lang = langForPath(path);
             const refractor = await shikiRefractor(lang);
@@ -88,7 +115,7 @@ export default function FileDiffCard({
         return () => {
             cancelled = true;
         };
-    }, [hunks, path]);
+    }, [hunks, path, skipHighlight]);
 
     // Inline comment widgets: existing threads + the in-progress form.
     const widgets = useMemo(() => {
@@ -153,6 +180,7 @@ export default function FileDiffCard({
                 <span className={`file-status file-status-${file.status}`}>{file.status}</span>
                 <span className="file-stats">
                     <span className="add">+{file.additions}</span> <span className="del">−{file.deletions}</span>
+                    {tooLarge && <span className="large-diff-badge"> large</span>}
                     {unresolved > 0 && <span className="tree-comments"> {unresolved}💬</span>}
                     {outdated > 0 && <span className="outdated-count"> {outdated} outdated</span>}
                 </span>
@@ -160,7 +188,17 @@ export default function FileDiffCard({
                     <input type="checkbox" checked={isViewed} onChange={onToggleViewed} /> Viewed
                 </label>
             </header>
-            {!collapsed && (
+            {!collapsed && tooLarge && !showLargeDiff ? (
+                <div className="file-placeholder large-diff-placeholder">
+                    <div>
+                        Large diff omitted for responsiveness: {formatBytes(info.bytes)} patch,
+                        longest line {formatBytes(info.maxLineBytes)}.
+                    </div>
+                    <button className="btn btn-small" onClick={() => setShowLargeDiff(true)}>
+                        Show anyway
+                    </button>
+                </div>
+            ) : !collapsed && (
                 file.binary ? (
                     <div className="file-placeholder">Binary file not shown.</div>
                 ) : !parsed ? (

@@ -141,8 +141,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .file-status-deleted { color: var(--red); border-color: var(--red); }
 .file-status-renamed { color: var(--purple); border-color: var(--purple); }
 .file-stats { font-size: 12px; white-space: nowrap; }
+.large-diff-badge { color: #9a6700; font-weight: 600; }
 .viewed-toggle { font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .file-placeholder { padding: 16px; color: var(--muted); }
+.large-diff-placeholder { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 /* react-diff-view overrides */
 .diff { font-size: 12px; }

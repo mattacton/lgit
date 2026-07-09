@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// TestMain isolates git from the developer's real configuration (commit
+// signing, hooks, aliases) so tests behave the same on any machine and in CI.
+// This covers both the test helpers and the git commands the code under test
+// spawns; scratch repos set their own user.name/email locally.
+func TestMain(m *testing.M) {
+	os.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	os.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	os.Exit(m.Run())
+}
+
 // mustGit runs git in dir, failing the test on error.
 func mustGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()

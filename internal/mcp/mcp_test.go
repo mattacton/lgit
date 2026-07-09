@@ -15,6 +15,14 @@ import (
 	"lgit/internal/store"
 )
 
+// TestMain isolates git from the developer's real configuration (commit
+// signing, hooks, aliases) so tests behave the same on any machine and in CI.
+func TestMain(m *testing.M) {
+	os.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	os.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	os.Exit(m.Run())
+}
+
 func mustGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)

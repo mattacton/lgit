@@ -27,6 +27,8 @@ export default function PRDetail({number}) {
     const [reviewBody, setReviewBody] = useState('');
     const [showPRComment, setShowPRComment] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [mergeCleanup, setMergeCleanup] = useState(true);
+    const [notice, setNotice] = useState(null);
 
     const reload = useCallback(async () => {
         try {
@@ -83,6 +85,22 @@ export default function PRDetail({number}) {
         }
     };
 
+    const doMerge = async () => {
+        const {pr} = data;
+        if (!window.confirm(`Rebase & merge PR #${number} into ${pr.base_ref}?`)) return;
+        setBusy(true);
+        try {
+            const res = await api.mergePR(number, mergeCleanup);
+            setData(d => (d ? {...d, pr: res.pr} : d));
+            setNotice(res.cleanup_message || null);
+            setError(null);
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const addPRComment = async body => {
         await api.createThread(number, {file_path: '', line: 0, side: 'new', body});
         setShowPRComment(false);
@@ -102,6 +120,7 @@ export default function PRDetail({number}) {
     return (
         <main className="pr-detail">
             {error && <div className="error-banner">{error}</div>}
+            {notice && <div className="notice-banner">{notice}</div>}
             <div className="pr-header">
                 <div className="pr-header-title">
                     <h1>
@@ -134,6 +153,24 @@ export default function PRDetail({number}) {
                 <button className="btn btn-request" disabled={busy} onClick={() => submitReview('request_changes')}>
                     Request changes
                 </button>
+                {pr.state !== 'merged' && pr.state !== 'closed' && (
+                    <span className="merge-controls">
+                        <button className="btn btn-merge" disabled={busy} onClick={doMerge}>
+                            Rebase &amp; merge
+                        </button>
+                        <label
+                            className="cleanup-toggle"
+                            title="After merging, remove the PR's worktree and delete its branch"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={mergeCleanup}
+                                onChange={e => setMergeCleanup(e.target.checked)}
+                            />
+                            clean up worktree
+                        </label>
+                    </span>
+                )}
                 <div className="view-toggle">
                     <button
                         className={viewMode === 'split' ? 'chip chip-active' : 'chip'}

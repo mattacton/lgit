@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/prs/{number}/threads", s.handleListThreads)
 	mux.HandleFunc("POST /api/prs/{number}/threads", s.handleCreateThread)
 	mux.HandleFunc("POST /api/prs/{number}/reviews", s.handleCreateReview)
+	mux.HandleFunc("POST /api/prs/{number}/merge", s.handleMergePR)
 	mux.HandleFunc("POST /api/threads/{id}/comments", s.handleAddComment)
 	mux.HandleFunc("POST /api/threads/{id}/resolve", s.handleResolveThread)
 

@@ -438,35 +438,18 @@ func cmdMerge(args []string) error {
 		return err
 	}
 	defer st.Close()
-	if pr.State == "merged" {
-		return fmt.Errorf("PR #%d is already merged", pr.Number)
-	}
-	pr = refreshPR(st, repo, pr)
-
-	msg := fmt.Sprintf("%s (#%d)", pr.Title, pr.Number)
-	if mode == git.MergeMerge {
-		msg = fmt.Sprintf("Merge PR #%d: %s", pr.Number, pr.Title)
-	}
-	newTip, err := repo.Merge(pr.BaseRef, pr.HeadRef, mode, msg)
+	res, err := server.New(st, repo).MergePR(pr, mode, *cleanup)
 	if err != nil {
 		return err
 	}
-	if err := st.UpdatePRState(pr.ID, "merged"); err != nil {
-		return err
-	}
-	fmt.Printf("merged PR #%d into %s (%s) at %s\n", pr.Number, pr.BaseRef, mode, short(newTip))
-
-	if *cleanup {
-		cwd, _ := os.Getwd()
-		if strings.HasPrefix(cwd, pr.WorktreePath) {
-			fmt.Printf("skipping cleanup: current directory is inside the PR worktree %s\n", pr.WorktreePath)
-			fmt.Printf("run from another worktree: lgit merge handled; clean up with `git worktree remove %s && git branch -D %s`\n", pr.WorktreePath, pr.HeadRef)
-			return nil
-		}
-		if err := repo.Cleanup(pr.WorktreePath, pr.HeadRef); err != nil {
-			return fmt.Errorf("merge succeeded but cleanup failed: %w", err)
-		}
-		fmt.Printf("removed worktree %s and branch %s\n", pr.WorktreePath, pr.HeadRef)
+	fmt.Printf("merged PR #%d into %s (%s) at %s\n", res.PR.Number, res.PR.BaseRef, mode, short(res.NewTip))
+	switch {
+	case res.CleanedUp:
+		fmt.Printf("removed worktree %s and branch %s\n", res.PR.WorktreePath, res.PR.HeadRef)
+	case res.CleanupErr != nil:
+		return fmt.Errorf("merge succeeded but cleanup failed: %w", res.CleanupErr)
+	case res.CleanupSkipped != "":
+		fmt.Println(res.CleanupSkipped)
 	}
 	return nil
 }

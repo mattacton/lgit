@@ -110,7 +110,7 @@ lgit pr reply <thread-id> "Fixed." --author agent
 lgit pr resolve <thread-id>
 lgit pr ready <number>                 # after addressing feedback: changes_requested -> open
 
-# integrate
+# integrate (or click "Rebase & merge" in the web UI)
 lgit merge <number> --cleanup          # default --rebase; --squash / --merge available
 ```
 

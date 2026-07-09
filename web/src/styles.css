@@ -27,6 +27,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
     background: #ffebe9; border: 1px solid #ff818266; color: var(--red);
     padding: 8px 12px; border-radius: 6px; margin: 8px 0;
 }
+.notice-banner {
+    background: #fff8c5; border: 1px solid #d4a72c66; color: #57430a;
+    padding: 8px 12px; border-radius: 6px; margin: 8px 0;
+}
 
 /* Dashboard */
 .dashboard { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
@@ -81,7 +85,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .btn-approve:hover { background: #166f30; }
 .btn-request { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-request:hover { background: #b51f29; }
+.btn-merge { background: var(--purple); border-color: var(--purple); color: #fff; }
+.btn-merge:hover { background: #6639ba; }
 .btn-resolve { color: var(--green); }
+.merge-controls { display: flex; align-items: center; gap: 6px; }
+.cleanup-toggle {
+    display: flex; align-items: center; gap: 4px;
+    color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap;
+}
 
 .review-bar {
     display: flex; gap: 8px; align-items: center; margin: 12px 0; flex-wrap: wrap;

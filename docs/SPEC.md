@@ -84,7 +84,8 @@ tree with filter, collapse-unchanged, intra-line word diff; inline comment threa
 **"changes since last review"** (diff only commits added since the last `review` row);
 Approve / Request changes (writes a `review` row, updates `pr.state`); outdated-thread
 badge when `anchor_sha` ≠ current `head_sha` and the anchored line changed (detect
-only, no auto-migrate in v1).
+only, no auto-migrate in v1); Merge button — rebase-only (other modes stay CLI-only),
+with a "clean up worktree" checkbox (default on) matching `lgit merge --cleanup`.
 
 ### 3. MCP server
 `lgit mcp` (stdio, official `modelcontextprotocol/go-sdk`): `list_prs`, `get_pr`,
@@ -102,7 +103,8 @@ outside lgit repos (safe for user-wide registration). HTTP-transport MCP via
 3. Agent reads unresolved comments via MCP/`--json`, fixes, commits, replies, resolves,
    calls `mark_pr_ready`.
 4. User re-reviews via "changes since last review", approves.
-5. `lgit merge <id> --cleanup` → rebased onto `main`, worktree + branch removed.
+5. Merge button in the UI (or `lgit merge <id> --cleanup`) → rebased onto `main`,
+   worktree + branch removed.
 
 ## Phases
 

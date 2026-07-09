@@ -406,3 +406,84 @@ func TestUIServedWithSPAFallback(t *testing.T) {
 		t.Errorf("asset served as HTML fallback (Content-Type %q)", ct)
 	}
 }
+
+type mergeResp struct {
+	PR             store.PR `json:"pr"`
+	NewTip         string   `json:"new_tip"`
+	CleanedUp      bool     `json:"cleaned_up"`
+	CleanupMessage string   `json:"cleanup_message"`
+}
+
+func TestMergePR(t *testing.T) {
+	f := newFixture(t)
+	f.createPR()
+
+	res := decode[mergeResp](t, wantStatus(t, f.do("POST", "/api/prs/1/merge",
+		map[string]any{"cleanup": false}), http.StatusOK))
+	if res.PR.State != "merged" {
+		t.Errorf("state = %q, want merged", res.PR.State)
+	}
+	if mainSHA := mustGit(t, f.repoDir, "rev-parse", "main"); mainSHA != res.NewTip {
+		t.Errorf("main = %s, want new tip %s", mainSHA, res.NewTip)
+	}
+	if res.CleanedUp {
+		t.Error("cleaned_up = true despite cleanup: false")
+	}
+	// Feature branch must survive when cleanup was declined.
+	if out := mustGit(t, f.repoDir, "branch", "--list", "feature"); out == "" {
+		t.Error("feature branch deleted despite cleanup: false")
+	}
+
+	// Re-merging is refused.
+	wantStatus(t, f.do("POST", "/api/prs/1/merge", nil), http.StatusConflict)
+}
+
+func TestMergePRCleanup(t *testing.T) {
+	f := newFixture(t)
+	// A feature branch in its own worktree, like the real agent flow.
+	wt := filepath.Join(t.TempDir(), "wt")
+	mustGit(t, f.repoDir, "worktree", "add", "-b", "wt-feature", wt, "main")
+	writeFile(t, wt, "d.txt", "wt work\n")
+	mustGit(t, wt, "add", ".")
+	mustGit(t, wt, "commit", "-m", "wt work")
+	pr, err := f.store.CreatePR(store.PR{
+		Title: "wt PR", BaseRef: "main", HeadRef: "wt-feature",
+		BaseSHA:      mustGit(t, f.repoDir, "rev-parse", "main"),
+		MergeBaseSHA: mustGit(t, f.repoDir, "merge-base", "main", "wt-feature"),
+		HeadSHA:      mustGit(t, f.repoDir, "rev-parse", "wt-feature"),
+		WorktreePath: wt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := decode[mergeResp](t, wantStatus(t, f.do("POST", fmt.Sprintf("/api/prs/%d/merge", pr.Number),
+		map[string]any{"cleanup": true}), http.StatusOK))
+	if !res.CleanedUp || res.CleanupMessage != "" {
+		t.Errorf("cleanup: %+v", res)
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree dir still exists: %v", err)
+	}
+	if out := mustGit(t, f.repoDir, "branch", "--list", "wt-feature"); out != "" {
+		t.Errorf("branch still exists: %q", out)
+	}
+}
+
+func TestMergePRConflict(t *testing.T) {
+	f := newFixture(t)
+	f.createPR()
+	// Conflicting change on main: feature edits a.txt too.
+	writeFile(t, f.repoDir, "a.txt", "conflicting\n")
+	mustGit(t, f.repoDir, "add", ".")
+	mustGit(t, f.repoDir, "commit", "-m", "conflict on main")
+
+	wantStatus(t, f.do("POST", "/api/prs/1/merge", nil), http.StatusConflict)
+	stored, err := f.store.GetPRByNumber(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State == "merged" {
+		t.Error("failed merge still set state=merged")
+	}
+}

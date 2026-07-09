@@ -27,6 +27,8 @@ export const api = {
         request(`/api/prs/${number}/threads`, {method: 'POST', body: JSON.stringify(payload)}),
     createReview: (number, payload) =>
         request(`/api/prs/${number}/reviews`, {method: 'POST', body: JSON.stringify(payload)}),
+    mergePR: (number, cleanup) =>
+        request(`/api/prs/${number}/merge`, {method: 'POST', body: JSON.stringify({cleanup})}),
     addComment: (threadId, payload) =>
         request(`/api/threads/${threadId}/comments`, {method: 'POST', body: JSON.stringify(payload)}),
     resolveThread: (threadId, resolved) =>

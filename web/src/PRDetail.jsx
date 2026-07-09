@@ -113,7 +113,7 @@ export default function PRDetail({number}) {
         await reloadThreads();
     };
 
-    if (error && !data) return <div className="error-banner">{error}</div>;
+    if (error && !data) return <div className="banner banner-error">{error}</div>;
     if (!data) return <div className="loading">Loading…</div>;
 
     const {pr, files, last_review: lastReview, from_sha: fromSHA} = data;
@@ -125,11 +125,20 @@ export default function PRDetail({number}) {
     const totalPatchBytes = files.reduce((sum, f) => sum + (f.patch ? f.patch.length : 0), 0);
     const defaultCollapsed = files.length > LARGE_PR_FILES || totalPatchBytes > LARGE_PR_BYTES;
     const needsReviewStateReminder = pr.state === 'open' && unresolvedCount > 0;
+    const totalAdd = files.reduce((sum, f) => sum + (f.additions || 0), 0);
+    const totalDel = files.reduce((sum, f) => sum + (f.deletions || 0), 0);
+    const fromShort = (fromSHA || pr.merge_base_sha).slice(0, 8);
+    const headShort = pr.head_sha.slice(0, 8);
 
     return (
         <main className="pr-detail">
-            {error && <div className="error-banner">{error}</div>}
-            {notice && <div className="notice-banner">{notice}</div>}
+            {error && <div className="banner banner-error">{error}</div>}
+            {notice && (
+                <div className="banner banner-info">
+                    <span className="banner-icon">i</span>
+                    {notice}
+                </div>
+            )}
             <div className="pr-header">
                 <div className="pr-header-title">
                     <h1>
@@ -138,13 +147,16 @@ export default function PRDetail({number}) {
                     <StateBadge state={pr.state} />
                 </div>
                 <div className="pr-header-meta">
-                    <code>{pr.head_ref}</code> → <code>{pr.base_ref}</code>
+                    <span>
+                        <span className="meta-branch">{pr.head_ref}</span> → {pr.base_ref}
+                    </span>
                     <span className="sep">·</span>
-                    <code title={fromSHA || pr.merge_base_sha}>{(fromSHA || pr.merge_base_sha).slice(0, 8)}</code>..
-                    <code title={pr.head_sha}>{pr.head_sha.slice(0, 8)}</code>
+                    <span title={`${fromSHA || pr.merge_base_sha}..${pr.head_sha}`}>{fromShort}..{headShort}</span>
                     <span className="sep">·</span>
-                    {unresolvedCount} unresolved
-                    <button className="btn btn-small" onClick={reload}>Refresh</button>
+                    <span className={unresolvedCount > 0 ? 'meta-unresolved' : undefined}>
+                        {unresolvedCount} unresolved
+                    </span>
+                    <button className="btn btn-small" onClick={reload}>↻ Refresh</button>
                 </div>
                 {pr.body && <p className="pr-body">{pr.body}</p>}
             </div>
@@ -152,12 +164,12 @@ export default function PRDetail({number}) {
             <div className="review-bar">
                 <input
                     className="review-summary"
-                    placeholder="Review summary (optional)"
+                    placeholder="Leave a review summary…"
                     value={reviewBody}
                     onChange={e => setReviewBody(e.target.value)}
                 />
                 <button className="btn btn-approve" disabled={busy} onClick={() => submitReview('approve')}>
-                    Approve
+                    <span aria-hidden="true">✓</span><span>Approve</span>
                 </button>
                 <button className="btn btn-request" disabled={busy} onClick={() => submitReview('request_changes')}>
                     Request changes
@@ -180,35 +192,44 @@ export default function PRDetail({number}) {
                         </label>
                     </span>
                 )}
-                <div className="view-toggle">
+            </div>
+
+            <div className="view-toggles">
+                <div className="seg">
                     <button
-                        className={diffScope === 'full' ? 'chip chip-active' : 'chip'}
+                        className={diffScope === 'full' ? 'seg-btn seg-btn-active' : 'seg-btn'}
                         onClick={() => setDiffScope('full')}
                     >
                         Full diff
                     </button>
                     <button
-                        className={diffScope === 'last-review' ? 'chip chip-active' : 'chip'}
+                        className={diffScope === 'last-review' ? 'seg-btn seg-btn-active' : 'seg-btn'}
                         onClick={() => setDiffScope('last-review')}
                     >
                         Since last review
                     </button>
+                </div>
+                <div className="seg">
                     <button
-                        className={viewMode === 'split' ? 'chip chip-active' : 'chip'}
+                        className={viewMode === 'split' ? 'seg-btn seg-btn-active' : 'seg-btn'}
                         onClick={() => setViewMode('split')}
                     >
                         Side-by-side
                     </button>
                     <button
-                        className={viewMode === 'unified' ? 'chip chip-active' : 'chip'}
+                        className={viewMode === 'unified' ? 'seg-btn seg-btn-active' : 'seg-btn'}
                         onClick={() => setViewMode('unified')}
                     >
                         Unified
                     </button>
                 </div>
+                <span className="diff-summary">
+                    {files.length} files · <span className="add">+{totalAdd}</span> <span className="del">−{totalDel}</span>
+                </span>
             </div>
+
             {needsReviewStateReminder && (
-                <div className="notice-banner">
+                <div className="banner banner-warn">
                     You have unresolved feedback on an open PR. Click <strong>Request changes</strong> when you want
                     the agent to act on it; that records a review checkpoint for “Since last review”.
                 </div>
@@ -216,12 +237,14 @@ export default function PRDetail({number}) {
 
             <div className="pr-layout">
                 <aside className="sidebar">
-                    <input
-                        className="file-filter"
-                        placeholder="Filter files…"
-                        value={filter}
-                        onChange={e => setFilter(e.target.value)}
-                    />
+                    <div className="file-filter-wrap">
+                        <input
+                            className="file-filter"
+                            placeholder="Filter files…"
+                            value={filter}
+                            onChange={e => setFilter(e.target.value)}
+                        />
+                    </div>
                     <FileTree
                         files={shownFiles}
                         viewed={viewed}
@@ -231,14 +254,16 @@ export default function PRDetail({number}) {
 
                 <div className="diff-column">
                     {defaultCollapsed && (
-                        <div className="diff-scope-note">
-                            Large diff detected, so files start collapsed and render only when opened.
+                        <div className="banner banner-info">
+                            <span className="banner-icon">i</span>
+                            Large diff detected — files start collapsed and render only when opened.
                         </div>
                     )}
                     {diffScope === 'last-review' && (
-                        <div className="diff-scope-note">
+                        <div className="banner banner-info">
+                            <span className="banner-icon">i</span>
                             {lastReview && lastReview.head_sha
-                                ? <>Showing changes after review #{lastReview.id} at <code>{lastReview.head_sha.slice(0, 8)}</code>.</>
+                                ? <span>Showing changes after review #{lastReview.id} at <code>{lastReview.head_sha.slice(0, 8)}</code>.</span>
                                 : 'No reviewed head SHA is available yet, so this matches the full diff.'}
                         </div>
                     )}
@@ -269,9 +294,11 @@ export default function PRDetail({number}) {
                         {prThreads.length === 0 && !showPRComment && (
                             <p className="empty">No PR-level comments.</p>
                         )}
-                        {prThreads.map(t => (
-                            <CommentThread key={t.id} thread={t} onChanged={reloadThreads} />
-                        ))}
+                        <div className="conversation-threads">
+                            {prThreads.map(t => (
+                                <CommentThread key={t.id} thread={t} onChanged={reloadThreads} />
+                            ))}
+                        </div>
                         {showPRComment ? (
                             <CommentForm
                                 onSubmit={addPRComment}
@@ -279,8 +306,8 @@ export default function PRDetail({number}) {
                                 placeholder="Leave a PR-level comment…"
                             />
                         ) : (
-                            <button className="btn" onClick={() => setShowPRComment(true)}>
-                                Add PR comment
+                            <button className="add-comment-btn" onClick={() => setShowPRComment(true)}>
+                                + Add PR comment…
                             </button>
                         )}
                     </section>

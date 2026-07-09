@@ -1,6 +1,7 @@
 import React from 'react';
 
-const STATE_LABELS = {
+export const STATE_LABELS = {
+    all: 'All',
     open: 'Open',
     changes_requested: 'Changes requested',
     approved: 'Approved',

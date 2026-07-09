@@ -216,20 +216,9 @@ func (t *tools) markPRReady(ctx context.Context, req *sdk.CallToolRequest, args 
 	if err != nil {
 		return nil, zero, err
 	}
-	switch pr.State {
-	case "open":
-		// Already awaiting review; idempotent no-op.
-		return nil, *pr, nil
-	case "changes_requested":
-		if err := st.UpdatePRState(pr.ID, "open"); err != nil {
-			return nil, zero, err
-		}
-		fresh, err := st.GetPR(pr.ID)
-		if err != nil {
-			return nil, zero, err
-		}
-		return nil, *fresh, nil
-	default:
-		return nil, zero, fmt.Errorf("PR #%d is %s; only open or changes_requested PRs can be marked ready", pr.Number, pr.State)
+	fresh, err := st.MarkPRReady(pr.ID)
+	if err != nil {
+		return nil, zero, err
 	}
+	return nil, *fresh, nil
 }

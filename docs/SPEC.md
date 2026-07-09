@@ -1,6 +1,6 @@
 # lgit — Local-Only PR Review for Agent Worktrees
 
-> Source of truth for the design. Status: Phase 1 (MVP core loop) complete; Phase 2 (agent integration) not yet started.
+> Source of truth for the design. Status: Phase 1 (MVP core loop) complete; Phase 2 (agent integration) in progress — MCP server shipped; remaining: changes-since-last-review, outdated-thread detection, new-commit notification.
 
 ## Context
 
@@ -71,6 +71,8 @@ new agent commits appear.
   agent-facing contract.
 - `lgit serve [--port]` — start web UI + API (+ optionally MCP over HTTP).
 - `lgit pr resolve <thread-id>` / `lgit pr reply <thread-id> <body>` — also for agents.
+- `lgit pr ready <id>` — CLI twin of MCP `mark_pr_ready` (changes_requested → open),
+  for agents running without an MCP client.
 - `lgit merge <id> [--rebase|--squash|--merge] [--cleanup]` — integrate head into base
   (**default `--rebase`**), set state=merged; `--cleanup` runs `git worktree remove`
   + `git branch -d`.

@@ -176,3 +176,43 @@ func TestReviews(t *testing.T) {
 		t.Error("expected CHECK constraint failure for bad verdict")
 	}
 }
+
+func TestMarkPRReady(t *testing.T) {
+	s := openTest(t)
+	pr, err := s.CreatePR(samplePR())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Idempotent on an already-open PR.
+	got, err := s.MarkPRReady(pr.ID)
+	if err != nil || got.State != "open" {
+		t.Fatalf("open PR: got %+v, err %v", got, err)
+	}
+
+	// changes_requested flips back to open.
+	if err := s.UpdatePRState(pr.ID, "changes_requested"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.MarkPRReady(pr.ID)
+	if err != nil || got.State != "open" {
+		t.Fatalf("changes_requested PR: got %+v, err %v", got, err)
+	}
+
+	// Any other state is refused, and left unchanged.
+	for _, state := range []string{"approved", "merged", "closed"} {
+		if err := s.UpdatePRState(pr.ID, state); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.MarkPRReady(pr.ID); err == nil {
+			t.Errorf("state %s: expected error", state)
+		}
+		if cur, _ := s.GetPR(pr.ID); cur.State != state {
+			t.Errorf("state %s was changed to %s", state, cur.State)
+		}
+	}
+
+	if _, err := s.MarkPRReady(999); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing PR: err = %v", err)
+	}
+}

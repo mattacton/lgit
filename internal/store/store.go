@@ -227,6 +227,29 @@ func (s *Store) UpdatePRState(id int64, state string) error {
 	return nil
 }
 
+// MarkPRReady flips a changes_requested PR back to open, signalling the
+// agent has addressed feedback and it is the reviewer's turn again. It is
+// idempotent on an already-open PR and errors on any other state so a caller
+// cannot silently drop an approval or reopen a merged/closed PR. Returns the
+// (possibly updated) PR.
+func (s *Store) MarkPRReady(id int64) (*PR, error) {
+	pr, err := s.GetPR(id)
+	if err != nil {
+		return nil, err
+	}
+	switch pr.State {
+	case "open":
+		return pr, nil
+	case "changes_requested":
+		if err := s.UpdatePRState(id, "open"); err != nil {
+			return nil, err
+		}
+		return s.GetPR(id)
+	default:
+		return nil, fmt.Errorf("PR #%d is %s; only open or changes_requested PRs can be marked ready", pr.Number, pr.State)
+	}
+}
+
 // UpdatePRRange refreshes a PR's snapshot SHAs (recomputed diff range).
 func (s *Store) UpdatePRRange(id int64, baseSHA, mergeBaseSHA, headSHA string) error {
 	_, err := s.db.Exec(`UPDATE pr SET base_sha = ?, merge_base_sha = ?, head_sha = ?, updated_at = ?

@@ -29,6 +29,7 @@ Usage:
   lgit pr reply <thread-id> <body> [--author agent]
                                                  reply to a thread
   lgit pr resolve <thread-id>                    resolve a thread
+  lgit pr ready <number>                         mark a changes_requested PR ready for re-review
   lgit serve [--port 7333]                       start the web review UI + JSON API
   lgit mcp                                       serve MCP tools over stdio (agent integration)
   lgit merge <number> [--rebase|--squash|--merge] [--cleanup]
@@ -52,7 +53,7 @@ func run(args []string) error {
 		return cmdInit()
 	case "pr":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: lgit pr <create|list|view|comments|reply|resolve> ...")
+			return fmt.Errorf("usage: lgit pr <create|list|view|comments|reply|resolve|ready> ...")
 		}
 		switch args[1] {
 		case "create":
@@ -67,6 +68,8 @@ func run(args []string) error {
 			return cmdPRReply(args[2:])
 		case "resolve":
 			return cmdPRResolve(args[2:])
+		case "ready":
+			return cmdPRReady(args[2:])
 		default:
 			return fmt.Errorf("unknown pr subcommand %q", args[1])
 		}
@@ -351,6 +354,22 @@ func cmdPRResolve(args []string) error {
 		return err
 	}
 	fmt.Printf("resolved thread %d\n", tid)
+	return nil
+}
+
+// cmdPRReady is the CLI twin of the MCP mark_pr_ready tool, for agents (or
+// scripts) running without an MCP client.
+func cmdPRReady(args []string) error {
+	pr, st, _, err := prByArg(args)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	fresh, err := st.MarkPRReady(pr.ID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("PR #%d is ready for re-review (state: %s)\n", fresh.Number, fresh.State)
 	return nil
 }
 

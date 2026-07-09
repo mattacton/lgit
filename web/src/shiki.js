@@ -10,7 +10,36 @@
 
 import {createHighlighterCore} from 'shiki/core';
 import {createJavaScriptRegexEngine} from 'shiki/engine/javascript';
-import githubLight from 'shiki/themes/github-light.mjs';
+
+// A minimal theme whose only job is to tag three token classes with CSS
+// custom-property colors. Shiki's normalizeTheme records any non-`#`
+// foreground as a color-replacement and hands `token.color` back verbatim, so
+// `var(--k)` etc. survive to render time and follow the active theme with no
+// re-tokenize. Everything else falls back to the (non-var) default foreground,
+// which the highlight() adapter drops so it inherits the diff line color.
+const lgitTheme = {
+    name: 'lgit',
+    type: 'dark',
+    settings: [
+        // Global default; dropped at render (not a var color) so text inherits
+        // the diff line color (context / add / delete).
+        {settings: {foreground: '#aaaaaa', background: '#000000'}},
+        {
+            scope: ['keyword', 'storage', 'storage.type', 'storage.modifier', 'keyword.control'],
+            settings: {foreground: 'var(--k)'},
+        },
+        // Operators (=, =>, &&, !, >, …) read as plain code, not keywords.
+        {scope: ['keyword.operator'], settings: {foreground: '#aaaaaa'}},
+        {
+            scope: ['string', 'punctuation.definition.string', 'string.regexp'],
+            settings: {foreground: 'var(--s)'},
+        },
+        {
+            scope: ['entity.name.function', 'support.function', 'variable.function'],
+            settings: {foreground: 'var(--fn)'},
+        },
+    ],
+};
 
 // Each entry lazy-loads its grammar; Vite splits these into per-lang chunks
 // fetched on demand.
@@ -61,7 +90,7 @@ let highlighterPromise = null;
 function getHighlighter() {
     if (!highlighterPromise) {
         highlighterPromise = createHighlighterCore({
-            themes: [githubLight],
+            themes: [lgitTheme],
             langs: [],
             engine: createJavaScriptRegexEngine({forgiving: true}),
         });
@@ -86,15 +115,18 @@ export async function shikiRefractor(lang) {
         highlight(text, language) {
             const lines = highlighter.codeToTokensBase(text, {
                 lang: language,
-                theme: 'github-light',
+                theme: 'lgit',
             });
             const nodes = [];
             lines.forEach((tokens, i) => {
                 if (i > 0) nodes.push({type: 'text', value: '\n'});
                 for (const token of tokens) {
+                    // Only forward our CSS-var colors; anything else (the theme
+                    // default) is dropped so the token inherits the line color.
+                    const color = token.color && token.color.startsWith('var(') ? token.color : undefined;
                     nodes.push({
                         type: 'shiki',
-                        color: token.color,
+                        color,
                         children: [{type: 'text', value: token.content}],
                     });
                 }

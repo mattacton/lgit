@@ -25,6 +25,14 @@ function formatBytes(bytes) {
     return `${bytes} B`;
 }
 
+// Splits a path so the directory portion can be dimmed and the filename kept
+// at full contrast.
+function PathParts({path}) {
+    const idx = path.lastIndexOf('/');
+    if (idx === -1) return <>{path}</>;
+    return <><span className="file-path-dir">{path.slice(0, idx + 1)}</span>{path.slice(idx + 1)}</>;
+}
+
 // Renders custom shiki tokens (with inline colors) and falls back to the
 // default renderer for everything else (text, edit marks, ...).
 function renderToken(token, defaultRender, i) {
@@ -127,7 +135,7 @@ export default function FileDiffCard({
             const change = findChange(hunks, t.side, t.line);
             if (!change) continue;
             add(getChangeKey(change), (
-                <CommentThread key={`t${t.id}`} thread={t} onChanged={onThreadsChanged} />
+                <CommentThread key={`t${t.id}`} thread={t} onChanged={onThreadsChanged} inline />
             ));
         }
         if (pending) {
@@ -176,18 +184,21 @@ export default function FileDiffCard({
                     e.stopPropagation();
                     toggleCollapsed();
                 }}>
-                    {collapsed ? '▸' : '▾'}
+                    <span className={collapsed ? 'chevron' : 'chevron chevron-open'}>▸</span>
                 </button>
-                <span className={`file-path status-${file.status}`}>
-                    {file.status === 'renamed' ? `${file.old_path} → ${file.new_path}` : path}
+                <span className="file-path">
+                    {file.status === 'renamed'
+                        ? <><PathParts path={file.old_path} /> <span className="file-path-arrow">→</span> <PathParts path={file.new_path} /></>
+                        : <PathParts path={path} />}
                 </span>
-                <span className={`file-status file-status-${file.status}`}>{file.status}</span>
+                <span className={`badge badge-sm badge-${file.status} file-status`}>{file.status}</span>
                 <span className="file-stats">
-                    <span className="add">+{file.additions}</span> <span className="del">−{file.deletions}</span>
-                    {tooLarge && <span className="large-diff-badge"> large</span>}
-                    {unresolved > 0 && <span className="tree-comments"> {unresolved}💬</span>}
-                    {outdated > 0 && <span className="outdated-count"> {outdated} outdated</span>}
+                    <span className="add">+{file.additions}</span>
+                    <span className="del">−{file.deletions}</span>
                 </span>
+                {tooLarge && <span className="badge badge-sm badge-large">large</span>}
+                {unresolved > 0 && <span className="badge badge-sm badge-open">{unresolved}</span>}
+                {outdated > 0 && <span className="badge badge-sm badge-outdated">{outdated} outdated</span>}
                 <label className="viewed-toggle" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={isViewed} onChange={onToggleViewed} /> Viewed
                 </label>
@@ -222,16 +233,25 @@ export default function FileDiffCard({
                             const skipped = previous
                                 ? hunk.oldStart - (previous.oldStart + previous.oldLines)
                                 : hunk.oldStart - 1;
-                            const elements = [];
-                            if (skipped > 0) {
-                                elements.push(
-                                    <Decoration key={`d${hunk.content}`}>
-                                        <span className="hunk-sep">⋯ {skipped} unchanged lines</span>
-                                    </Decoration>
-                                );
-                            }
-                            elements.push(<Hunk key={hunk.content} hunk={hunk} />);
-                            return elements;
+                            const m = /^@@+ (.+?) @@ ?(.*)$/.exec(hunk.content);
+                            const range = m ? m[1] : hunk.content;
+                            const context = m ? m[2] : '';
+                            const suffix = skipped > 0 ? `${context ? ' · ' : ''}${skipped} unchanged` : '';
+                            return [
+                                <Decoration
+                                    key={`d${hunk.content}`}
+                                    className="hunk-decoration"
+                                    gutterClassName="hunk-gutter"
+                                    contentClassName="hunk-content"
+                                >
+                                    <span className="hunk-at">@@</span>
+                                    <span className="hunk-info">
+                                        <span className="hunk-range">{range} @@</span>{' '}
+                                        <span className="hunk-context">{context}{suffix}</span>
+                                    </span>
+                                </Decoration>,
+                                <Hunk key={hunk.content} hunk={hunk} />,
+                            ];
                         })}
                     </Diff>
                 )

@@ -107,7 +107,8 @@ export default function PRDetail({number}) {
     };
 
     const addPRComment = async body => {
-        await api.createThread(number, {file_path: '', line: 0, side: 'new', body});
+        const thread = await api.createThread(number, {file_path: '', line: 0, side: 'new', body});
+        setThreads(prev => [...prev, thread]);
         setShowPRComment(false);
         await reloadThreads();
     };

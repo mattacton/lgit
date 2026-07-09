@@ -348,7 +348,10 @@ input:focus, textarea:focus { border-color: var(--accent); }
 /* ---------- file diff cards ---------- */
 .file-card {
     border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--surface); overflow: hidden; scroll-margin-top: 56px;
+    /* clip, not hidden: overflow:hidden makes the card a scroll container,
+       which displaces the sticky header 46px into the card instead of
+       letting it stick to the viewport below the top bar */
+    background: var(--surface); overflow: clip; scroll-margin-top: 56px;
 }
 .file-card-header {
     display: flex; align-items: center; gap: 10px; padding: 10px 12px;

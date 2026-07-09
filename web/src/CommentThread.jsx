@@ -23,7 +23,7 @@ export function CommentForm({onSubmit, onCancel, placeholder}) {
 
     return (
         <div className="comment-form">
-            {error && <div className="error-banner">{error}</div>}
+            {error && <div className="banner banner-error">{error}</div>}
             <textarea
                 autoFocus
                 value={body}
@@ -47,7 +47,22 @@ export function CommentForm({onSubmit, onCancel, placeholder}) {
     );
 }
 
-export function CommentThread({thread, onChanged}) {
+// Status + outdated pills, shared by both variants.
+function StatusPills({thread}) {
+    return (
+        <>
+            {thread.resolved
+                ? <span className="badge badge-sm badge-resolved">Resolved</span>
+                : <span className="badge badge-sm badge-thread-open">Open</span>}
+            {thread.outdated && <span className="badge badge-sm badge-outdated">Outdated</span>}
+        </>
+    );
+}
+
+// One thread renders in two shapes: a PR-level card (header bar + body) for
+// conversation threads, and a bare comment card for inline diff threads. Only
+// the presentation differs — the reply/resolve logic is identical.
+export function CommentThread({thread, onChanged, inline = false}) {
     const [replying, setReplying] = useState(false);
 
     const reply = async body => {
@@ -61,43 +76,67 @@ export function CommentThread({thread, onChanged}) {
         await onChanged();
     };
 
+    const messages = thread.comments.map((c, idx) => (
+        <div key={c.id} className="comment">
+            <div className={`avatar ${inline ? 'avatar-sm' : 'avatar-md'} avatar-${c.author}`}>
+                {c.author[0]}
+            </div>
+            <div className="comment-main">
+                <div className="comment-meta">
+                    <span className={`author author-${c.author}`}>{c.author}</span>
+                    <span className="comment-time">{timeAgo(c.created_at)}</span>
+                    {inline && idx === 0 && (
+                        <>
+                            <StatusPills thread={thread} />
+                            {thread.file_path && (
+                                <span className="comment-loc">:{thread.line} ({thread.side})</span>
+                            )}
+                        </>
+                    )}
+                </div>
+                <div className="comment-body">{c.body}</div>
+            </div>
+        </div>
+    ));
+
+    const actions = replying ? (
+        <CommentForm onSubmit={reply} onCancel={() => setReplying(false)} placeholder="Reply…" />
+    ) : inline ? (
+        <div className="thread-actions">
+            <button className="act-text" onClick={() => setReplying(true)}>Reply</button>
+            {thread.resolved
+                ? <button className="act-text" onClick={() => setResolved(false)}>Unresolve</button>
+                : <button className="act-text act-text-resolve" onClick={() => setResolved(true)}>Resolve</button>}
+        </div>
+    ) : (
+        <div className="thread-actions">
+            <button className="act-btn" onClick={() => setReplying(true)}>Reply</button>
+            {thread.resolved
+                ? <button className="act-btn" onClick={() => setResolved(false)}>Unresolve</button>
+                : <button className="act-btn act-resolve" onClick={() => setResolved(true)}>Resolve</button>}
+        </div>
+    );
+
+    if (inline) {
+        return (
+            <div className="thread-inline">
+                {messages}
+                {actions}
+            </div>
+        );
+    }
+
     return (
-        <div className={thread.resolved ? 'thread thread-resolved' : 'thread'}>
+        <div className="thread">
             <div className="thread-header">
-                <span className="thread-loc">
-                    {thread.file_path
-                        ? `${thread.file_path}:${thread.line} (${thread.side})`
-                        : 'PR comment'}
-                </span>
+                <span className="thread-label">PR comment</span>
                 <span className="thread-statuses">
-                    {thread.outdated && <span className="thread-status thread-outdated">Outdated</span>}
-                    <span className="thread-status">{thread.resolved ? 'Resolved' : 'Open'}</span>
+                    <StatusPills thread={thread} />
                 </span>
             </div>
-            {thread.comments.map(c => (
-                <div key={c.id} className="comment">
-                    <div className="comment-meta">
-                        <span className={`author author-${c.author}`}>{c.author}</span>
-                        <span className="comment-time">{timeAgo(c.created_at)}</span>
-                    </div>
-                    <div className="comment-body">{c.body}</div>
-                </div>
-            ))}
-            <div className="thread-actions">
-                {replying ? (
-                    <CommentForm onSubmit={reply} onCancel={() => setReplying(false)} placeholder="Reply…" />
-                ) : (
-                    <>
-                        <button className="btn btn-small" onClick={() => setReplying(true)}>Reply</button>
-                        {thread.resolved ? (
-                            <button className="btn btn-small" onClick={() => setResolved(false)}>Unresolve</button>
-                        ) : (
-                            <button className="btn btn-small btn-resolve" onClick={() => setResolved(true)}>
-                                Resolve
-                            </button>
-                        )}
-                    </>
-                )}
+            <div className="thread-body">
+                {messages}
+                {actions}
             </div>
         </div>
     );

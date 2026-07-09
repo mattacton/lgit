@@ -144,6 +144,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
 .badge-copied { --tok: var(--merged); }
 .badge-large { --tok: var(--del); }
 .badge-outdated { --tok: var(--closed); }
+/* thread status: open threads read green (add), resolved read muted (closed) */
+.badge-thread-open { --tok: var(--add); }
 .badge-resolved { --tok: var(--closed); color: var(--text-faint); }
 
 /* ---------- shared: buttons ---------- */

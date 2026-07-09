@@ -94,6 +94,13 @@ func (r *Repo) MergeBase(a, b string) (string, error) {
 	return r.run("merge-base", a, b)
 }
 
+// SwitchDetach checks out rev on a detached HEAD, leaving all branch refs
+// untouched (works even when rev's branch is checked out in another worktree).
+func (r *Repo) SwitchDetach(rev string) error {
+	_, err := r.run("switch", "--detach", rev)
+	return err
+}
+
 // Worktree describes one entry from `git worktree list --porcelain`.
 type Worktree struct {
 	Path     string

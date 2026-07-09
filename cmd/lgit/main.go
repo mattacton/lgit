@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,7 @@ Usage:
                                                  reply to a thread
   lgit pr resolve <thread-id>                    resolve a thread
   lgit pr ready <number>                         mark a changes_requested PR ready for re-review
+  lgit pr checkout <number>                      try the PR here on a detached HEAD
   lgit serve [--port 7333]                       start the web review UI + JSON API
   lgit mcp                                       serve MCP tools over stdio (agent integration)
   lgit merge <number> [--rebase|--squash|--merge] [--cleanup]
@@ -54,7 +56,7 @@ func run(args []string) error {
 		return cmdInit()
 	case "pr":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: lgit pr <create|list|view|comments|reply|resolve|ready> ...")
+			return fmt.Errorf("usage: lgit pr <create|list|view|comments|reply|resolve|ready|checkout> ...")
 		}
 		switch args[1] {
 		case "create":
@@ -71,6 +73,8 @@ func run(args []string) error {
 			return cmdPRResolve(args[2:])
 		case "ready":
 			return cmdPRReady(args[2:])
+		case "checkout":
+			return cmdPRCheckout(args[2:])
 		default:
 			return fmt.Errorf("unknown pr subcommand %q", args[1])
 		}
@@ -374,6 +378,58 @@ func cmdPRReady(args []string) error {
 	}
 	fmt.Printf("PR #%d is ready for re-review (state: %s)\n", fresh.Number, fresh.State)
 	return nil
+}
+
+// cmdPRCheckout detaches the invoking checkout at the PR's head commit so a
+// reviewer can try the code in place. `git switch --detach` never touches
+// branch refs, so it works even though the PR branch is checked out in the
+// agent's worktree.
+func cmdPRCheckout(args []string) error {
+	pr, st, repo, err := prByArg(args)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	pr = refreshPR(st, repo, pr)
+
+	top, err := repo.Toplevel()
+	if err != nil {
+		return err
+	}
+	if samePath(top, pr.WorktreePath) {
+		return fmt.Errorf("this is PR #%d's own worktree; detaching here would pull it off its branch", pr.Number)
+	}
+	clean, err := repo.IsClean(top)
+	if err != nil {
+		return err
+	}
+	if !clean {
+		return fmt.Errorf("working tree at %s has uncommitted changes; commit or stash them first", top)
+	}
+
+	prev, err := repo.CurrentBranch()
+	if err != nil {
+		prev = pr.BaseRef // already detached; suggest the base branch instead
+	}
+	if err := repo.SwitchDetach(pr.HeadSHA); err != nil {
+		return err
+	}
+	fmt.Printf("detached HEAD at %s (PR #%d: %s)\n", short(pr.HeadSHA), pr.Number, pr.Title)
+	fmt.Printf("return with: git switch %s\n", prev)
+	fmt.Println("note: commits made here will not move the PR branch")
+	return nil
+}
+
+// samePath compares two paths with symlinks resolved (macOS: /var vs /private/var).
+func samePath(a, b string) bool {
+	return canonPath(a) == canonPath(b)
+}
+
+func canonPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
 }
 
 func cmdServe(args []string) error {

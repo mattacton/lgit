@@ -354,6 +354,39 @@ func TestPrimaryWorktreeAndBranchExists(t *testing.T) {
 	}
 }
 
+func TestSwitchDetach(t *testing.T) {
+	repo, wt := setupRepo(t)
+	r, err := Open(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	featureSHA := mustGit(t, repo, "rev-parse", "feature")
+	mainSHA := mustGit(t, repo, "rev-parse", "main")
+
+	if err := r.SwitchDetach(featureSHA); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustGit(t, repo, "rev-parse", "HEAD"); got != featureSHA {
+		t.Errorf("HEAD = %s, want %s", got, featureSHA)
+	}
+	if got := mustGit(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); got != "HEAD" {
+		t.Errorf("expected detached HEAD, got branch %q", got)
+	}
+	// Branch refs are untouched: feature stays checked out in its worktree,
+	// main still points where it did.
+	if got := mustGit(t, wt, "rev-parse", "--abbrev-ref", "HEAD"); got != "feature" {
+		t.Errorf("feature worktree HEAD = %q, want feature", got)
+	}
+	if got := mustGit(t, repo, "rev-parse", "main"); got != mainSHA {
+		t.Errorf("main moved: %s", got)
+	}
+	// And we can come back.
+	mustGit(t, repo, "switch", "main")
+	if got := mustGit(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); got != "main" {
+		t.Errorf("after switch back: %q", got)
+	}
+}
+
 func TestParseDiffRename(t *testing.T) {
 	raw := "diff --git a/old.txt b/new.txt\n" +
 		"similarity index 100%\n" +

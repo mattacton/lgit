@@ -102,6 +102,7 @@ lgit pr create --title "My change" --base main
 
 # review in the browser
 lgit serve                             # http://127.0.0.1:7333  (--port to change)
+lgit pr checkout <number>              # try the branch here (detached HEAD); return with `git switch main`
 
 # the agent side (also how you script it)
 lgit pr list --state open

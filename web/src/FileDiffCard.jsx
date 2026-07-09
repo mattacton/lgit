@@ -139,6 +139,7 @@ export default function FileDiffCard({
     }), []);
 
     const unresolved = threads.filter(t => !t.resolved).length;
+    const outdated = threads.filter(t => t.outdated).length;
 
     return (
         <section className="file-card" id={fileAnchor(path)}>
@@ -153,6 +154,7 @@ export default function FileDiffCard({
                 <span className="file-stats">
                     <span className="add">+{file.additions}</span> <span className="del">−{file.deletions}</span>
                     {unresolved > 0 && <span className="tree-comments"> {unresolved}💬</span>}
+                    {outdated > 0 && <span className="outdated-count"> {outdated} outdated</span>}
                 </span>
                 <label className="viewed-toggle">
                     <input type="checkbox" checked={isViewed} onChange={onToggleViewed} /> Viewed

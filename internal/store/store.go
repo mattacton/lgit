@@ -420,6 +420,19 @@ func (s *Store) SetThreadResolved(threadID int64, resolved bool) error {
 	return nil
 }
 
+// SetThreadOutdated marks whether an inline thread's anchor is stale relative
+// to the current PR head.
+func (s *Store) SetThreadOutdated(threadID int64, outdated bool) error {
+	res, err := s.db.Exec(`UPDATE thread SET outdated = ? WHERE id = ?`, boolInt(outdated), threadID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func boolInt(b bool) int {
 	if b {
 		return 1

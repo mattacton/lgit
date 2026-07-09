@@ -122,14 +122,39 @@ func (s *Server) RefreshPR(pr *store.PR) *store.PR {
 	if err != nil {
 		return pr
 	}
-	if headSHA != pr.HeadSHA || baseSHA != pr.BaseSHA || mergeBase != pr.MergeBaseSHA {
+	headChanged := headSHA != pr.HeadSHA
+	if headChanged || baseSHA != pr.BaseSHA || mergeBase != pr.MergeBaseSHA {
 		if err := s.Store.UpdatePRRange(pr.ID, baseSHA, mergeBase, headSHA); err == nil {
 			if fresh, err := s.Store.GetPR(pr.ID); err == nil {
+				if headChanged {
+					s.RefreshOutdatedThreads(fresh)
+				}
 				return fresh
 			}
 		}
 	}
 	return pr
+}
+
+// RefreshOutdatedThreads updates unresolved inline thread stale badges against
+// the PR's current head. It is best-effort so a missing branch/file does not
+// block the rest of PR refresh.
+func (s *Server) RefreshOutdatedThreads(pr *store.PR) {
+	threads, err := s.Store.ListThreads(pr.ID, true)
+	if err != nil {
+		return
+	}
+	for _, th := range threads {
+		if th.FilePath == "" || th.AnchorSHA == "" || th.AnchorSHA == pr.HeadSHA {
+			_ = s.Store.SetThreadOutdated(th.ID, false)
+			continue
+		}
+		changed, err := s.Repo.LineChanged(th.AnchorSHA, pr.HeadSHA, th.FilePath, th.Line)
+		if err != nil {
+			continue
+		}
+		_ = s.Store.SetThreadOutdated(th.ID, changed)
+	}
 }
 
 // --- handlers ---
@@ -194,6 +219,7 @@ func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	pr = s.RefreshPR(pr)
 	unresolved := r.URL.Query().Get("unresolved") == "true"
 	threads, err := s.Store.ListThreads(pr.ID, unresolved)
 	if err != nil {

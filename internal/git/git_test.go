@@ -158,6 +158,41 @@ func TestMergeBaseAndDiff(t *testing.T) {
 	}
 }
 
+func TestLineChanged(t *testing.T) {
+	_, wt := setupRepo(t)
+	r, err := Open(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := r.RevParse("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, wt, "a.txt", "hello\nchanged\nworld\n")
+	mustGit(t, wt, "add", ".")
+	mustGit(t, wt, "commit", "-m", "change reviewed line")
+	head, err := r.RevParse("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := r.LineChanged(anchor, head, "a.txt", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Error("line 2 not reported changed")
+	}
+	unchanged, err := r.LineChanged(anchor, head, "a.txt", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged {
+		t.Error("line 1 reported changed")
+	}
+}
+
 func TestWorktrees(t *testing.T) {
 	repo, wt := setupRepo(t)
 	r, err := Open(wt)

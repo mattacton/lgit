@@ -322,6 +322,43 @@ func TestListThreads(t *testing.T) {
 	}
 }
 
+func TestRefreshMarksOutdatedThreads(t *testing.T) {
+	f := newFixture(t)
+	pr := f.createPR()
+	path := fmt.Sprintf("/api/prs/%d/threads", pr.Number)
+	changed := decode[store.Thread](t, wantStatus(t, f.do("POST", path, map[string]any{
+		"file_path": "a.txt", "line": 2, "body": "this line looks odd",
+	}), http.StatusCreated))
+	unchanged := decode[store.Thread](t, wantStatus(t, f.do("POST", path, map[string]any{
+		"file_path": "a.txt", "line": 1, "body": "keep this in mind",
+	}), http.StatusCreated))
+	prLevel := decode[store.Thread](t, wantStatus(t, f.do("POST", path, map[string]any{
+		"file_path": "", "line": 0, "body": "overall note",
+	}), http.StatusCreated))
+
+	mustGit(t, f.repoDir, "checkout", "feature")
+	writeFile(t, f.repoDir, "a.txt", "hello\nchanged after review\nworld\n")
+	mustGit(t, f.repoDir, "add", ".")
+	mustGit(t, f.repoDir, "commit", "-m", "change reviewed line")
+	mustGit(t, f.repoDir, "checkout", "main")
+
+	wantStatus(t, f.do("GET", fmt.Sprintf("/api/prs/%d", pr.Number), nil), http.StatusOK)
+	threads := decode[[]store.Thread](t, wantStatus(t, f.do("GET", path, nil), http.StatusOK))
+	byID := map[int64]store.Thread{}
+	for _, th := range threads {
+		byID[th.ID] = th
+	}
+	if !byID[changed.ID].Outdated {
+		t.Errorf("changed thread outdated = false, want true: %+v", byID[changed.ID])
+	}
+	if byID[unchanged.ID].Outdated {
+		t.Errorf("unchanged thread outdated = true, want false: %+v", byID[unchanged.ID])
+	}
+	if byID[prLevel.ID].Outdated {
+		t.Errorf("PR-level thread outdated = true, want false: %+v", byID[prLevel.ID])
+	}
+}
+
 func TestAddComment(t *testing.T) {
 	f := newFixture(t)
 	pr := f.createPR()

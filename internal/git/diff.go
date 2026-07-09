@@ -1,6 +1,8 @@
 package git
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +28,61 @@ func (r *Repo) Diff(from, to string) ([]FileDiff, error) {
 		return nil, err
 	}
 	return parseDiff(raw), nil
+}
+
+// LineChanged reports whether line in path at from falls within a changed hunk
+// between from and to. It is used to flag inline review threads as outdated
+// after new commits land on a PR head.
+func (r *Repo) LineChanged(from, to, path string, line int64) (bool, error) {
+	if path == "" || line <= 0 || from == to {
+		return false, nil
+	}
+	raw, err := r.runRaw("diff", "--unified=0", from+".."+to, "--", path)
+	if err != nil {
+		return false, err
+	}
+	for l := range strings.Lines(raw) {
+		l = strings.TrimRight(l, "\n")
+		if !strings.HasPrefix(l, "@@ ") {
+			continue
+		}
+		start, count, err := parseOldHunkRange(l)
+		if err != nil {
+			return false, err
+		}
+		if lineInRange(line, start, count) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func parseOldHunkRange(header string) (int64, int64, error) {
+	fields := strings.Fields(header)
+	if len(fields) < 2 || !strings.HasPrefix(fields[1], "-") {
+		return 0, 0, fmt.Errorf("bad hunk header: %q", header)
+	}
+	rangePart := strings.TrimPrefix(fields[1], "-")
+	startPart, countPart, ok := strings.Cut(rangePart, ",")
+	start, err := strconv.ParseInt(startPart, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("bad hunk start in %q: %w", header, err)
+	}
+	if !ok {
+		return start, 1, nil
+	}
+	count, err := strconv.ParseInt(countPart, 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("bad hunk count in %q: %w", header, err)
+	}
+	return start, count, nil
+}
+
+func lineInRange(line, start, count int64) bool {
+	if count == 0 {
+		return line == start
+	}
+	return line >= start && line < start+count
 }
 
 // parseDiff splits full `git diff` output into per-file diffs and extracts

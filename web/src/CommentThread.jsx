@@ -69,7 +69,10 @@ export function CommentThread({thread, onChanged}) {
                         ? `${thread.file_path}:${thread.line} (${thread.side})`
                         : 'PR comment'}
                 </span>
-                <span className="thread-status">{thread.resolved ? 'Resolved' : 'Open'}</span>
+                <span className="thread-statuses">
+                    {thread.outdated && <span className="thread-status thread-outdated">Outdated</span>}
+                    <span className="thread-status">{thread.resolved ? 'Resolved' : 'Open'}</span>
+                </span>
             </div>
             {thread.comments.map(c => (
                 <div key={c.id} className="comment">

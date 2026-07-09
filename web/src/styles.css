@@ -161,6 +161,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .thread-resolved { opacity: 0.75; }
 .thread-header { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .thread-loc { font-family: ui-monospace, monospace; }
+.thread-statuses { display: flex; gap: 6px; align-items: center; }
+.thread-outdated, .outdated-count { color: #9a6700; font-weight: 600; }
 .comment { border-top: 1px solid #eaeef2; padding: 6px 0; }
 .comment-meta { display: flex; gap: 8px; font-size: 12px; margin-bottom: 2px; }
 .author { font-weight: 700; }

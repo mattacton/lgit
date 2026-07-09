@@ -53,7 +53,7 @@ export default function App() {
                         onClick={toggleTheme}
                         title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
                     >
-                        {theme === 'dark' ? '☾' : '☀'} {theme}
+                        ◐ {theme}
                     </button>
                     <span className="conn">
                         <span className="conn-dot" />

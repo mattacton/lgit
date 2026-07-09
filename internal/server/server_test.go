@@ -223,8 +223,11 @@ func TestMergedPRNotRefreshed(t *testing.T) {
 }
 
 type diffResp struct {
-	PR    store.PR       `json:"pr"`
-	Files []git.FileDiff `json:"files"`
+	PR         store.PR       `json:"pr"`
+	Files      []git.FileDiff `json:"files"`
+	FromSHA    string         `json:"from_sha"`
+	ToSHA      string         `json:"to_sha"`
+	LastReview *store.Review  `json:"last_review"`
 }
 
 func TestGetDiff(t *testing.T) {
@@ -247,6 +250,33 @@ func TestGetDiff(t *testing.T) {
 	}
 
 	wantStatus(t, f.do("GET", "/api/prs/99/diff", nil), http.StatusNotFound)
+}
+
+func TestGetDiffSinceLastReview(t *testing.T) {
+	f := newFixture(t)
+	pr := f.createPR()
+
+	wantStatus(t, f.do("POST", fmt.Sprintf("/api/prs/%d/reviews", pr.Number), map[string]any{
+		"verdict": "request_changes", "body": "needs follow-up",
+	}), http.StatusCreated)
+	oldHead := pr.HeadSHA
+	newHead := f.commitOnFeature("c.txt", "more\n")
+
+	resp := decode[diffResp](t, wantStatus(t, f.do("GET", "/api/prs/1/diff?since=last-review", nil), http.StatusOK))
+	if resp.FromSHA != oldHead || resp.ToSHA != newHead {
+		t.Fatalf("range = %s..%s, want %s..%s", resp.FromSHA, resp.ToSHA, oldHead, newHead)
+	}
+	if resp.LastReview == nil || resp.LastReview.HeadSHA != oldHead {
+		t.Fatalf("last_review = %+v, want head %s", resp.LastReview, oldHead)
+	}
+	if len(resp.Files) != 1 || resp.Files[0].NewPath != "c.txt" {
+		t.Fatalf("files = %+v, want only c.txt", resp.Files)
+	}
+
+	full := decode[diffResp](t, wantStatus(t, f.do("GET", "/api/prs/1/diff", nil), http.StatusOK))
+	if len(full.Files) != 3 {
+		t.Fatalf("full diff files = %+v, want 3 files", full.Files)
+	}
 }
 
 func TestCreateThread(t *testing.T) {

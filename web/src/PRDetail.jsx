@@ -22,6 +22,7 @@ export default function PRDetail({number}) {
     const [threads, setThreads] = useState([]);
     const [error, setError] = useState(null);
     const [viewMode, setViewMode] = useState('split');
+    const [diffScope, setDiffScope] = useState('full');
     const [filter, setFilter] = useState('');
     const [viewed, setViewed] = useState(() => loadViewed(number));
     const [reviewBody, setReviewBody] = useState('');
@@ -32,14 +33,15 @@ export default function PRDetail({number}) {
 
     const reload = useCallback(async () => {
         try {
-            const [diff, ths] = await Promise.all([api.getDiff(number), api.listThreads(number)]);
+            const since = diffScope === 'last-review' ? 'last-review' : '';
+            const [diff, ths] = await Promise.all([api.getDiff(number, since), api.listThreads(number)]);
             setData(diff);
             setThreads(ths);
             setError(null);
         } catch (e) {
             setError(e.message);
         }
-    }, [number]);
+    }, [number, diffScope]);
 
     useEffect(() => {
         setViewed(loadViewed(number));
@@ -110,7 +112,7 @@ export default function PRDetail({number}) {
     if (error && !data) return <div className="error-banner">{error}</div>;
     if (!data) return <div className="loading">Loading…</div>;
 
-    const {pr, files} = data;
+    const {pr, files, last_review: lastReview, from_sha: fromSHA} = data;
     const prThreads = threadsByFile.get('') || [];
     const shownFiles = filter
         ? files.filter(f => (f.new_path || f.old_path).toLowerCase().includes(filter.toLowerCase()))
@@ -131,7 +133,7 @@ export default function PRDetail({number}) {
                 <div className="pr-header-meta">
                     <code>{pr.head_ref}</code> → <code>{pr.base_ref}</code>
                     <span className="sep">·</span>
-                    <code title={pr.merge_base_sha}>{pr.merge_base_sha.slice(0, 8)}</code>..
+                    <code title={fromSHA || pr.merge_base_sha}>{(fromSHA || pr.merge_base_sha).slice(0, 8)}</code>..
                     <code title={pr.head_sha}>{pr.head_sha.slice(0, 8)}</code>
                     <span className="sep">·</span>
                     {unresolvedCount} unresolved
@@ -173,6 +175,18 @@ export default function PRDetail({number}) {
                 )}
                 <div className="view-toggle">
                     <button
+                        className={diffScope === 'full' ? 'chip chip-active' : 'chip'}
+                        onClick={() => setDiffScope('full')}
+                    >
+                        Full diff
+                    </button>
+                    <button
+                        className={diffScope === 'last-review' ? 'chip chip-active' : 'chip'}
+                        onClick={() => setDiffScope('last-review')}
+                    >
+                        Since last review
+                    </button>
+                    <button
                         className={viewMode === 'split' ? 'chip chip-active' : 'chip'}
                         onClick={() => setViewMode('split')}
                     >
@@ -203,6 +217,13 @@ export default function PRDetail({number}) {
                 </aside>
 
                 <div className="diff-column">
+                    {diffScope === 'last-review' && (
+                        <div className="diff-scope-note">
+                            {lastReview && lastReview.head_sha
+                                ? <>Showing changes after review #{lastReview.id} at <code>{lastReview.head_sha.slice(0, 8)}</code>.</>
+                                : 'No reviewed head SHA is available yet, so this matches the full diff.'}
+                        </div>
+                    )}
                     {shownFiles.map(file => {
                         const path = file.new_path || file.old_path;
                         return (
@@ -218,7 +239,11 @@ export default function PRDetail({number}) {
                             />
                         );
                     })}
-                    {shownFiles.length === 0 && <p className="empty">No files match.</p>}
+                    {shownFiles.length === 0 && (
+                        <p className="empty">
+                            {diffScope === 'last-review' ? 'No changes since the last review.' : 'No files match.'}
+                        </p>
+                    )}
 
                     <section className="conversation">
                         <h2>Conversation</h2>

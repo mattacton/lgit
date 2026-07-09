@@ -100,6 +100,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 }
 .review-summary { flex: 1; min-width: 220px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
 .view-toggle { display: flex; gap: 4px; margin-left: auto; }
+.diff-scope-note {
+    background: #ddf4ff; border: 1px solid #54aeff66; color: #0969da;
+    padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 12px;
+}
 
 .pr-layout { display: flex; gap: 16px; align-items: flex-start; }
 .sidebar { width: 260px; flex-shrink: 0; position: sticky; top: 12px; }

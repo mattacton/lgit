@@ -165,15 +165,25 @@ func TestThreadsAndComments(t *testing.T) {
 func TestReviews(t *testing.T) {
 	s := openTest(t)
 	p, _ := s.CreatePR(samplePR())
-	r, err := s.CreateReview(p.ID, "request_changes", "needs work")
+	r, err := s.CreateReview(p.ID, "request_changes", "needs work", p.HeadSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.ID == 0 || r.Verdict != "request_changes" {
+	if r.ID == 0 || r.Verdict != "request_changes" || r.HeadSHA != p.HeadSHA {
 		t.Errorf("review = %+v", r)
 	}
-	if _, err := s.CreateReview(p.ID, "bogus", ""); err == nil {
+	last, err := s.LastReview(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.ID != r.ID || last.HeadSHA != p.HeadSHA {
+		t.Errorf("last review = %+v, want %+v", last, r)
+	}
+	if _, err := s.CreateReview(p.ID, "bogus", "", p.HeadSHA); err == nil {
 		t.Error("expected CHECK constraint failure for bad verdict")
+	}
+	if _, err := s.LastReview(999); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing last review: err = %v", err)
 	}
 }
 

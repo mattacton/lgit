@@ -21,7 +21,10 @@ async function request(path, options = {}) {
 export const api = {
     listPRs: () => request('/api/prs'),
     getPR: number => request(`/api/prs/${number}`),
-    getDiff: number => request(`/api/prs/${number}/diff`),
+    getDiff: (number, since) => {
+        const query = since ? `?since=${encodeURIComponent(since)}` : '';
+        return request(`/api/prs/${number}/diff${query}`);
+    },
     listThreads: number => request(`/api/prs/${number}/threads`),
     createThread: (number, payload) =>
         request(`/api/prs/${number}/threads`, {method: 'POST', body: JSON.stringify(payload)}),

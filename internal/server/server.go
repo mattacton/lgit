@@ -163,7 +163,19 @@ func (s *Server) handleGetDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pr = s.RefreshPR(pr)
-	files, err := s.Repo.Diff(pr.MergeBaseSHA, pr.HeadSHA)
+	fromSHA := pr.MergeBaseSHA
+	var lastReview *store.Review
+	if r.URL.Query().Get("since") == "last-review" {
+		lastReview, err = s.Store.LastReview(pr.ID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			writeErr(w, err)
+			return
+		}
+		if lastReview != nil && lastReview.HeadSHA != "" {
+			fromSHA = lastReview.HeadSHA
+		}
+	}
+	files, err := s.Repo.Diff(fromSHA, pr.HeadSHA)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -171,7 +183,9 @@ func (s *Server) handleGetDiff(w http.ResponseWriter, r *http.Request) {
 	if files == nil {
 		files = []git.FileDiff{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"pr": pr, "files": files})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"pr": pr, "files": files, "from_sha": fromSHA, "to_sha": pr.HeadSHA, "last_review": lastReview,
+	})
 }
 
 func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +262,7 @@ func (s *Server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	pr = s.RefreshPR(pr)
 	var req createReviewReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		badRequest(w, "invalid JSON: "+err.Error())
@@ -265,7 +280,7 @@ func (s *Server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "verdict must be approve, request_changes, or comment")
 		return
 	}
-	rev, err := s.Store.CreateReview(pr.ID, req.Verdict, req.Body)
+	rev, err := s.Store.CreateReview(pr.ID, req.Verdict, req.Body, pr.HeadSHA)
 	if err != nil {
 		writeErr(w, err)
 		return

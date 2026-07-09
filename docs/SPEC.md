@@ -1,6 +1,6 @@
 # lgit — Local-Only PR Review for Agent Worktrees
 
-> Source of truth for the design. Status: Phase 1 (MVP core loop) complete; Phase 2 (agent integration) in progress — MCP server shipped; remaining: changes-since-last-review, outdated-thread detection, new-commit notification.
+> Source of truth for the design. Status: Phase 1 (MVP core loop) complete; Phase 2 (agent integration) in progress — MCP server and changes-since-last-review shipped; remaining: outdated-thread detection, new-commit notification.
 
 ## Context
 
@@ -52,7 +52,7 @@ Schema (v1):
 - `pr(id, number, title, body, base_ref, head_ref, base_sha, merge_base_sha,
   head_sha, worktree_path, state, created_at, updated_at)`
   - `state ∈ {open, changes_requested, approved, merged, closed}`
-- `review(id, pr_id, verdict, body, created_at)` — `verdict ∈ {approve, request_changes, comment}`; powers "changes since last review."
+- `review(id, pr_id, verdict, body, head_sha, created_at)` — `verdict ∈ {approve, request_changes, comment}`; `head_sha` records the reviewed PR head and powers "changes since last review."
 - `thread(id, pr_id, file_path, line, side, anchor_sha, resolved, outdated, created_at)`
   - `side ∈ {old, new}`; `anchor_sha` = the head_sha the comment was made against.
 - `comment(id, thread_id, author, body, created_at)` — `author ∈ {user, agent}`.

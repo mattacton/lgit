@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS review (
 	pr_id      INTEGER NOT NULL REFERENCES pr(id),
 	verdict    TEXT NOT NULL CHECK (verdict IN ('approve','request_changes','comment')),
 	body       TEXT NOT NULL DEFAULT '',
+	head_sha   TEXT NOT NULL DEFAULT '',
 	created_at TEXT NOT NULL
 );
 
@@ -83,6 +85,7 @@ type Review struct {
 	PRID      int64  `json:"pr_id"`
 	Verdict   string `json:"verdict"`
 	Body      string `json:"body"`
+	HeadSHA   string `json:"head_sha"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -133,7 +136,15 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
+	if _, err := db.Exec(`ALTER TABLE review ADD COLUMN head_sha TEXT NOT NULL DEFAULT ''`); err != nil && !isDuplicateColumn(err) {
+		db.Close()
+		return nil, fmt.Errorf("migrating schema: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+func isDuplicateColumn(err error) bool {
+	return strings.Contains(err.Error(), "duplicate column name")
 }
 
 // Close closes the underlying database.
@@ -257,16 +268,31 @@ func (s *Store) UpdatePRRange(id int64, baseSHA, mergeBaseSHA, headSHA string) e
 	return err
 }
 
-// CreateReview inserts a review row.
-func (s *Store) CreateReview(prID int64, verdict, body string) (*Review, error) {
+// CreateReview inserts a review row at the PR head SHA being reviewed.
+func (s *Store) CreateReview(prID int64, verdict, body, headSHA string) (*Review, error) {
 	ts := now()
-	res, err := s.db.Exec(`INSERT INTO review (pr_id, verdict, body, created_at) VALUES (?,?,?,?)`,
-		prID, verdict, body, ts)
+	res, err := s.db.Exec(`INSERT INTO review (pr_id, verdict, body, head_sha, created_at) VALUES (?,?,?,?,?)`,
+		prID, verdict, body, headSHA, ts)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return &Review{ID: id, PRID: prID, Verdict: verdict, Body: body, CreatedAt: ts}, nil
+	return &Review{ID: id, PRID: prID, Verdict: verdict, Body: body, HeadSHA: headSHA, CreatedAt: ts}, nil
+}
+
+// LastReview returns the newest review row for a PR.
+func (s *Store) LastReview(prID int64) (*Review, error) {
+	var r Review
+	err := s.db.QueryRow(`SELECT id, pr_id, verdict, body, head_sha, created_at
+		FROM review WHERE pr_id = ? ORDER BY id DESC LIMIT 1`, prID).
+		Scan(&r.ID, &r.PRID, &r.Verdict, &r.Body, &r.HeadSHA, &r.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 // CreateThread inserts a thread plus its first comment, atomically.

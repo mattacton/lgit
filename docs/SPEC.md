@@ -166,3 +166,9 @@ lgit/
   6. `lgit merge <id> --cleanup`; confirm `main` has the change and worktree/branch are gone.
 - **MCP (Phase 2):** point a Claude Code agent at the `lgit` MCP server; confirm it can
   list PRs, read unresolved comments, reply, and resolve.
+
+## Things Matt wants
+
+- I have no indicators or easy way to identify which files had comments (resolved or not) in the PR after an agent has made updates and responded
+- Should we allow images in comments? And, if we do, we'll probably want to have some sort of cleanup based on time or number of PRs so we don't turn into a silent way to fill up hard drive space.
+- I would like to be able to comment on a file as a whole.

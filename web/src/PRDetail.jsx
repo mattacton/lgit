@@ -123,6 +123,7 @@ export default function PRDetail({number}) {
     const unresolvedCount = threads.filter(t => !t.resolved).length;
     const totalPatchBytes = files.reduce((sum, f) => sum + (f.patch ? f.patch.length : 0), 0);
     const defaultCollapsed = files.length > LARGE_PR_FILES || totalPatchBytes > LARGE_PR_BYTES;
+    const needsReviewStateReminder = pr.state === 'open' && unresolvedCount > 0;
 
     return (
         <main className="pr-detail">
@@ -205,6 +206,12 @@ export default function PRDetail({number}) {
                     </button>
                 </div>
             </div>
+            {needsReviewStateReminder && (
+                <div className="notice-banner">
+                    You have unresolved feedback on an open PR. Click <strong>Request changes</strong> when you want
+                    the agent to act on it; that records a review checkpoint for “Since last review”.
+                </div>
+            )}
 
             <div className="pr-layout">
                 <aside className="sidebar">

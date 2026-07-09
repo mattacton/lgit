@@ -138,6 +138,26 @@ func (r *Repo) Worktrees() ([]Worktree, error) {
 	return wts, nil
 }
 
+// PrimaryWorktree returns the path of the repository's main worktree (git
+// lists it first). Long-running processes re-root themselves there so their
+// git context never depends on the directory they were launched from.
+func (r *Repo) PrimaryWorktree() (string, error) {
+	wts, err := r.Worktrees()
+	if err != nil {
+		return "", err
+	}
+	if len(wts) == 0 {
+		return "", fmt.Errorf("no worktrees found")
+	}
+	return wts[0].Path, nil
+}
+
+// BranchExists reports whether the local branch exists.
+func (r *Repo) BranchExists(name string) bool {
+	_, err := r.run("rev-parse", "--verify", "refs/heads/"+name)
+	return err == nil
+}
+
 // WorktreeForBranch returns the worktree that has the given branch checked
 // out, or nil if none does.
 func (r *Repo) WorktreeForBranch(branch string) (*Worktree, error) {

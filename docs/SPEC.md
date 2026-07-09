@@ -76,6 +76,10 @@ new agent commits appear.
 - `lgit merge <id> [--rebase|--squash|--merge] [--cleanup]` — integrate head into base
   (**default `--rebase`**), set state=merged; `--cleanup` runs `git worktree remove`
   + `git branch -d`.
+- `lgit sweep` — finish cleanup for merged PRs whose worktree/branch still exist
+  (explicit, never automatic; keeps the primary worktree and checked-out branches).
+  `lgit serve` re-roots its git context at the primary worktree so merge-button
+  cleanup works regardless of where serve was launched.
 
 ### 2. Web review UI (`lgit serve` → localhost)
 PR dashboard → PR detail with: side-by-side + unified diff, Shiki highlighting, file

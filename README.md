@@ -112,6 +112,7 @@ lgit pr ready <number>                 # after addressing feedback: changes_requ
 
 # integrate (or click "Rebase & merge" in the web UI)
 lgit merge <number> --cleanup          # default --rebase; --squash / --merge available
+lgit sweep                             # finish any leftover cleanup for merged PRs
 ```
 
 Run `lgit help` for the full command list.

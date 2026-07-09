@@ -112,16 +112,29 @@ func (r *Repo) Merge(baseRef, headRef string, mode MergeMode, commitMsg string) 
 func (r *Repo) Cleanup(worktreePath, headRef string) error {
 	if worktreePath != "" {
 		if _, err := os.Stat(worktreePath); err == nil {
-			if _, err := r.run("worktree", "remove", worktreePath); err != nil {
-				return fmt.Errorf("removing worktree: %w", err)
+			if err := r.RemoveWorktree(worktreePath); err != nil {
+				return err
 			}
 		} else {
 			// Worktree dir already gone; prune stale metadata.
 			r.run("worktree", "prune")
 		}
 	}
-	if _, err := r.run("branch", "-D", headRef); err != nil {
-		return fmt.Errorf("deleting branch %s: %w", headRef, err)
+	return r.DeleteBranch(headRef)
+}
+
+// RemoveWorktree removes a (clean) linked worktree.
+func (r *Repo) RemoveWorktree(path string) error {
+	if _, err := r.run("worktree", "remove", path); err != nil {
+		return fmt.Errorf("removing worktree: %w", err)
+	}
+	return nil
+}
+
+// DeleteBranch force-deletes a local branch.
+func (r *Repo) DeleteBranch(name string) error {
+	if _, err := r.run("branch", "-D", name); err != nil {
+		return fmt.Errorf("deleting branch %s: %w", name, err)
 	}
 	return nil
 }

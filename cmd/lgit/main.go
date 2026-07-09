@@ -34,6 +34,7 @@ Usage:
   lgit mcp                                       serve MCP tools over stdio (agent integration)
   lgit merge <number> [--rebase|--squash|--merge] [--cleanup]
                                                  integrate the PR (default: rebase)
+  lgit sweep                                     remove leftover worktrees/branches of merged PRs
 `
 
 func main() {
@@ -79,6 +80,8 @@ func run(args []string) error {
 		return cmdMCP(args[1:])
 	case "merge":
 		return cmdMerge(args[1:])
+	case "sweep":
+		return cmdSweep(args[1:])
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return nil
@@ -383,12 +386,58 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Re-root the long-running server at the primary worktree so its git
+	// context (and the merge-cleanup guard) doesn't depend on the directory
+	// serve happened to be launched from — e.g. a PR's own worktree.
+	primary, err := repo.PrimaryWorktree()
+	if err != nil {
+		return err
+	}
+	repo = &git.Repo{Dir: primary}
 	st, err := openStore(repo)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 	return server.New(st, repo).ListenAndServe(*port)
+}
+
+func cmdSweep(args []string) error {
+	fs := flag.NewFlagSet("sweep", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	repo, err := openRepo()
+	if err != nil {
+		return err
+	}
+	st, err := openStore(repo)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	entries, err := server.New(st, repo).Sweep()
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		fmt.Println("nothing to sweep")
+		return nil
+	}
+	failed := false
+	for _, e := range entries {
+		for _, a := range e.Actions {
+			fmt.Printf("PR #%d: %s\n", e.PR.Number, a)
+		}
+		if e.Err != nil {
+			failed = true
+			fmt.Printf("PR #%d: error: %v\n", e.PR.Number, e.Err)
+		}
+	}
+	if failed {
+		return fmt.Errorf("sweep finished with errors")
+	}
+	return nil
 }
 
 // cmdMCP serves MCP over stdio. Unlike other commands it must not require a

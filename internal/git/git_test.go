@@ -326,6 +326,34 @@ func TestCleanup(t *testing.T) {
 	}
 }
 
+func TestPrimaryWorktreeAndBranchExists(t *testing.T) {
+	repo, wt := setupRepo(t)
+	// Primary must be the main checkout no matter which worktree we ask from.
+	for _, dir := range []string{repo, wt} {
+		r, err := Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		primary, err := r.PrimaryWorktree()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if eval, _ := filepath.EvalSymlinks(repo); filepath.Clean(primary) != repo && filepath.Clean(primary) != eval {
+			t.Errorf("primary from %s = %q, want %q", dir, primary, repo)
+		}
+	}
+	r, err := Open(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.BranchExists("feature") {
+		t.Error("feature branch should exist")
+	}
+	if r.BranchExists("nope") {
+		t.Error("nope branch should not exist")
+	}
+}
+
 func TestParseDiffRename(t *testing.T) {
 	raw := "diff --git a/old.txt b/new.txt\n" +
 		"similarity index 100%\n" +

@@ -487,3 +487,104 @@ func TestMergePRConflict(t *testing.T) {
 		t.Error("failed merge still set state=merged")
 	}
 }
+
+// addWorktreePR creates a feature branch in its own worktree with one commit
+// and a PR row for it, returning the PR and the worktree path.
+func (f *fixture) addWorktreePR(branch string) (*store.PR, string) {
+	f.t.Helper()
+	wt := filepath.Join(f.t.TempDir(), branch)
+	mustGit(f.t, f.repoDir, "worktree", "add", "-b", branch, wt, "main")
+	writeFile(f.t, wt, branch+".txt", "work\n")
+	mustGit(f.t, wt, "add", ".")
+	mustGit(f.t, wt, "commit", "-m", "work on "+branch)
+	pr, err := f.store.CreatePR(store.PR{
+		Title: branch, BaseRef: "main", HeadRef: branch,
+		BaseSHA:      mustGit(f.t, f.repoDir, "rev-parse", "main"),
+		MergeBaseSHA: mustGit(f.t, f.repoDir, "merge-base", "main", branch),
+		HeadSHA:      mustGit(f.t, f.repoDir, "rev-parse", branch),
+		WorktreePath: wt,
+	})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return pr, wt
+}
+
+func TestMergePRCleanupGuardRepoRoot(t *testing.T) {
+	f := newFixture(t)
+	pr, wt := f.addWorktreePR("guarded")
+
+	// A server whose git context is rooted inside the PR's own worktree
+	// (like a `lgit serve` launched from it) must not remove it.
+	repoAtWT, err := git.Open(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(f.store, repoAtWT).Handler()
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/prs/%d/merge", pr.Number), strings.NewReader(`{"cleanup":true}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	res := decode[mergeResp](t, wantStatus(t, rec, http.StatusOK))
+
+	if res.PR.State != "merged" {
+		t.Errorf("state = %q, want merged", res.PR.State)
+	}
+	if res.CleanedUp || !strings.Contains(res.CleanupMessage, "cleanup skipped") {
+		t.Errorf("guard did not fire: %+v", res)
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Errorf("worktree was removed despite guard: %v", err)
+	}
+}
+
+func TestSweep(t *testing.T) {
+	f := newFixture(t)
+	// PR #1: from the shared fixture — branch "feature" lives in the primary
+	// worktree's repo, no separate worktree dir.
+	f.createPR()
+	// PR #2: real worktree, merged without cleanup.
+	pr2, wt := f.addWorktreePR("swept")
+
+	wantStatus(t, f.do("POST", "/api/prs/1/merge", map[string]any{"cleanup": false}), http.StatusOK)
+	wantStatus(t, f.do("POST", fmt.Sprintf("/api/prs/%d/merge", pr2.Number),
+		map[string]any{"cleanup": false}), http.StatusOK)
+
+	repo, err := git.Open(f.repoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := New(f.store, repo).Sweep()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries: %+v", len(entries), entries)
+	}
+	for _, e := range entries {
+		if e.Err != nil {
+			t.Errorf("PR #%d: %v", e.PR.Number, e.Err)
+		}
+	}
+	// Leftovers gone.
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree %s still exists", wt)
+	}
+	for _, br := range []string{"feature", "swept"} {
+		if out := mustGit(t, f.repoDir, "branch", "--list", br); out != "" {
+			t.Errorf("branch %s still exists", br)
+		}
+	}
+	// The primary worktree must never be touched.
+	if _, err := os.Stat(filepath.Join(f.repoDir, "a.txt")); err != nil {
+		t.Errorf("primary worktree damaged: %v", err)
+	}
+
+	// Idempotent: nothing left to do.
+	entries, err = New(f.store, repo).Sweep()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("second sweep found %d entries: %+v", len(entries), entries)
+	}
+}

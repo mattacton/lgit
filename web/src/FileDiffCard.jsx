@@ -167,11 +167,15 @@ export default function FileDiffCard({
 
     const unresolved = threads.filter(t => !t.resolved).length;
     const outdated = threads.filter(t => t.outdated).length;
+    const toggleCollapsed = () => setCollapsed(c => !c);
 
     return (
         <section className="file-card" id={fileAnchor(path)}>
-            <header className="file-card-header">
-                <button className="collapse-toggle" onClick={() => setCollapsed(c => !c)}>
+            <header className="file-card-header" onClick={toggleCollapsed}>
+                <button className="collapse-toggle" onClick={e => {
+                    e.stopPropagation();
+                    toggleCollapsed();
+                }}>
                     {collapsed ? '▸' : '▾'}
                 </button>
                 <span className={`file-path status-${file.status}`}>
@@ -184,7 +188,7 @@ export default function FileDiffCard({
                     {unresolved > 0 && <span className="tree-comments"> {unresolved}💬</span>}
                     {outdated > 0 && <span className="outdated-count"> {outdated} outdated</span>}
                 </span>
-                <label className="viewed-toggle">
+                <label className="viewed-toggle" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={isViewed} onChange={onToggleViewed} /> Viewed
                 </label>
             </header>

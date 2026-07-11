@@ -1,157 +1,231 @@
-# lgit — local-only PR review for git worktrees
+# lgit
 
-`lgit` turns a git worktree's branch into a reviewable "PR" that you review in a
-local browser UI — side-by-side diffs, Shiki highlighting, inline comment threads —
-without ever touching a remote. An agent working in the worktree then reads those
-comments as JSON, fixes the code, replies, and resolves; you re-review and merge.
-GitHub stays as the remote; this is purely a local review layer.
+**Local-only, GitHub-style PR review for git worktree workflows.**
 
-The whole thing ships as a single Go binary with the web UI embedded inside it.
-See [`docs/SPEC.md`](docs/SPEC.md) for the full design.
+When several coding agents (or humans) each work in their own git worktree, `lgit` turns each branch into a reviewable local “PR”: side-by-side diffs, syntax highlighting, inline comment threads, approve / request changes, and merge — all in a browser, all without a remote.
 
-## Requirements
+GitHub (or any remote) stays where it is. This is a **local review layer** on top of worktrees.
 
-- **Go 1.26+** (`go.mod` pins `go 1.26.2`)
-- **Node 18+ / npm** — only needed to rebuild the web UI (see [Building](#building))
-- **git** — `lgit` shells out to the `git` CLI
+One Go binary. Web UI embedded. SQLite store shared across every worktree of a repo. Optional MCP server so agents can read comments, reply, and resolve without leaving the terminal.
 
-SQLite is provided by the pure-Go `modernc.org/sqlite`, so there is no cgo and no
-system SQLite dependency.
+## Why
 
-## Layout
+Closest tools ([diffx](https://github.com/wong2/diffx), [difit](https://github.com/yoshiko-pg/difit)) are excellent *diff viewers*, not *PR forges*: comments are ephemeral, there’s no multi-PR store, no merge, and worktrees aren’t first-class. Agent orchestrators usually push review through real GitHub PRs.
 
-```
-cmd/lgit/            CLI entry point
-internal/git/        worktree detection, merge-base, diff range, merge/cleanup
-internal/store/      SQLite schema + queries (modernc.org/sqlite)
-internal/server/     net/http JSON API + embedded web UI
-internal/mcp/        MCP server (official modelcontextprotocol/go-sdk, stdio)
-internal/server/dist built web assets, embedded via embed.FS (checked in — see below)
-web/                 React + Vite + Shiki frontend source
-docs/SPEC.md         design doc
-```
+`lgit` is for the loop you actually want when agents work in parallel locally:
 
-## Building
+1. Agent finishes in a worktree → `lgit pr create`
+2. You review in the browser, leave inline comments, request changes
+3. Agent reads unresolved threads (CLI JSON or MCP), fixes, replies, resolves
+4. You re-review (including “changes since last review”), approve
+5. Merge (rebase by default) and optionally clean up the worktree + branch
 
-The binary embeds the built web UI, so a full build has two stages: build the
-frontend, then build the Go binary.
+## Features
 
-### 1. Build the web UI → `internal/server/dist`
+- **Worktree-native PRs** — create a PR from inside a feature worktree; one SQLite DB at the shared git dir is visible from every worktree
+- **Browser review UI** — side-by-side / unified diffs, Shiki highlighting, file tree, collapse unchanged, viewed checkboxes, inline threads, PR-level conversation
+- **Review lifecycle** — open → changes requested / approved → merged / closed; “changes since last review”; outdated-thread badges
+- **Merge** — default rebase (linear history); squash and merge-commit available on the CLI; optional worktree + branch cleanup
+- **Agent contract** — `lgit pr comments --json`, reply / resolve / ready; or MCP tools over stdio
+- **Single binary** — pure-Go SQLite (no cgo), UI embedded via `//go:embed`
+
+## Install
+
+### From source (recommended)
+
+Requires **Go 1.26+** and **git**. Node is only needed if you rebuild the web UI.
 
 ```bash
-cd web
-npm install          # first time only
-npm run build        # vite build → ../internal/server/dist
-```
-
-Vite is configured (`web/vite.config.js`) to emit its output straight into
-`internal/server/dist` with `emptyOutDir: true`, replacing the previous build.
-
-**`internal/server/dist` is committed to git on purpose.** `internal/server/server.go`
-embeds it with `//go:embed all:dist`, so the directory must exist on disk at compile
-time for the binary to serve the UI. This is why `.gitignore` excludes `web/dist/`
-but *tracks* `internal/server/dist/`.
-
-The practical consequence: **whenever you change anything under `web/`, re-run
-`npm run build` and commit the regenerated `internal/server/dist/` along with your
-source changes.** If you don't, the Go binary will embed and serve a stale UI. If
-the `dist` folder is missing entirely, the server returns
-`UI assets not embedded; rebuild with npm run build in web/`.
-
-### 2. Build the Go binary
-
-```bash
+git clone https://github.com/mattacton/lgit.git
+cd lgit
 go build -o lgit ./cmd/lgit
+# optional: install onto your PATH
+cp lgit "$(go env GOPATH)/bin/lgit"
 ```
 
-This produces the `lgit` binary in the repo root (it's gitignored). With Go's build
-cache you only pay the frontend cost when the UI actually changes; a backend-only
-edit just needs this step.
+The built frontend is already checked in under `internal/server/dist/`, so a plain `go build` produces a binary that serves the UI.
 
-### Frontend development
+### Requirements
 
-For iterating on the UI without rebuilding the binary each time:
+| Tool | Needed for |
+|------|------------|
+| Go 1.26+ | building the binary |
+| git | all git operations (`lgit` shells out to the `git` CLI) |
+| Node 18+ / npm | rebuilding the web UI only |
 
-```bash
-# terminal 1: run the API/backend
-lgit serve                 # listens on :7333
+No system SQLite; storage uses pure-Go [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite).
 
-# terminal 2: run the Vite dev server with hot reload
-cd web && npm run dev
-```
-
-`web/vite.config.js` proxies `/api` to `http://127.0.0.1:7333`, so the dev server
-talks to a running `lgit serve`. When you're done, run `npm run build` to bake your
-changes into `internal/server/dist` and commit it.
-
-## Running
-
-`lgit` stores everything in one SQLite DB at
-`$(git rev-parse --git-common-dir)/lgit/lgit.db`. Because every worktree of a repo
-shares the same common git dir, that single DB is visible from all of them — no
-per-worktree config.
-
-The review loop:
+## Quick start
 
 ```bash
 # once per repo
-lgit init                              # create the DB + schema
+lgit init
 
-# from inside a feature worktree
-lgit pr create --title "My change" --base main
+# from a feature worktree (branch already exists)
+lgit pr create --title "Add rate limiting" --base main
 
 # review in the browser
-lgit serve                             # http://127.0.0.1:7333  (--port to change)
-lgit pr checkout <number>              # try the branch here (detached HEAD); return with `git switch main`
+lgit serve                    # http://127.0.0.1:7333
+# optional: try the PR code in your current checkout (detached HEAD)
+lgit pr checkout <number>     # return with: git switch main
 
-# the agent side (also how you script it)
-lgit pr list --state open
-lgit pr comments <number> --unresolved --json     # the agent-facing contract
-lgit pr reply <thread-id> "Fixed." --author agent
+# after feedback is addressed (agent or human)
+lgit pr comments <number> --unresolved --json
+lgit pr reply <thread-id> "Fixed in the last commit." --author agent
 lgit pr resolve <thread-id>
-lgit pr ready <number>                 # after addressing feedback: changes_requested -> open
+lgit pr ready <number>        # changes_requested → open
 
-# integrate (or click "Rebase & merge" in the web UI)
-lgit merge <number> --cleanup          # default --rebase; --squash / --merge available
-lgit sweep                             # finish any leftover cleanup for merged PRs
+# integrate
+lgit merge <number> --cleanup # default: rebase; also --squash / --merge
+lgit sweep                    # finish leftover cleanup for merged PRs
 ```
 
 Run `lgit help` for the full command list.
 
+## How storage works
+
+Everything lives in one SQLite database:
+
+```text
+$(git rev-parse --git-common-dir)/lgit/lgit.db
+```
+
+All worktrees of a repo share `--git-common-dir`, so that single DB is visible from every checkout — no per-worktree config. `lgit init` creates the directory and schema (idempotent).
+
+## The review loop
+
+```text
+ worktree branch ──► lgit pr create ──► lgit serve (browser)
+                                              │
+                     inline comments + request changes
+                                              │
+                     agent: comments --json / MCP
+                     fix → reply → resolve → ready
+                                              │
+                     re-review → approve → merge --cleanup
+```
+
+**Human side:** open the dashboard, review the diff, comment on lines, request changes or approve, merge when ready.
+
+**Agent side:** list open PRs, fetch unresolved threads as JSON (or via MCP), apply fixes, reply with what changed, resolve only threads actually addressed, then `lgit pr ready` so the PR is open for re-review again.
+
+## CLI
+
+| Command | Purpose |
+|---------|---------|
+| `lgit init` | Create DB + schema at the shared git dir |
+| `lgit pr create [--title] [--base main]` | Open a PR from the current worktree |
+| `lgit pr list [--state] [--json]` | List PRs |
+| `lgit pr view <n>` | Show one PR |
+| `lgit pr comments <n> [--unresolved] [--json]` | List threads (JSON = agent contract) |
+| `lgit pr reply <thread-id> <body> [--author agent]` | Reply on a thread |
+| `lgit pr resolve <thread-id>` | Resolve a thread |
+| `lgit pr ready <n>` | Mark `changes_requested` ready for re-review |
+| `lgit pr checkout <n>` | Detach HEAD at the PR tip to try the code |
+| `lgit serve [--port 7333]` | Web UI + JSON API |
+| `lgit mcp` | MCP tools over stdio |
+| `lgit merge <n> [--rebase\|--squash\|--merge] [--cleanup]` | Integrate (default rebase) |
+| `lgit sweep` | Remove leftover worktrees/branches of merged PRs |
+
 ## MCP server (agent integration)
 
-`lgit mcp` serves the agent side of the review loop as MCP tools over stdio:
-`list_prs`, `get_pr`, `get_unresolved_comments`, `reply_comment`,
-`resolve_comment`, and `mark_pr_ready` (flips a `changes_requested` PR back to
-`open` once the agent has addressed feedback, signalling it's the reviewer's
-turn again).
+`lgit mcp` exposes the agent side of the loop over stdio:
 
-To register it in Claude Code for yourself across all repos — without adding
-any config to the repo or affecting other devs:
+- `list_prs`
+- `get_pr`
+- `get_unresolved_comments`
+- `reply_comment`
+- `resolve_comment`
+- `mark_pr_ready`
+
+### Claude Code (user-wide)
+
+Register once for yourself across all repos — no project config, no impact on other devs:
 
 ```bash
 claude mcp add --scope user lgit -- lgit mcp
 ```
 
-(Use `--scope project` instead if a team explicitly wants a shared `.mcp.json`.)
+Use `--scope project` only if a team wants a shared `.mcp.json`.
 
-A user-wide registration is safe because the server starts from any directory
-and resolves the repo *per tool call*: outside a git repo, or in one where
-`lgit init` hasn't been run, the server still starts cleanly and each tool
-returns an error saying so. Since all worktrees of a repo share one lgit DB,
-agents in different worktrees all see the same PRs.
+The server starts from any directory and resolves the repo **per tool call**. Outside a git repo, or before `lgit init`, tools return a clear error instead of failing process startup. Because all worktrees share one lgit DB, agents in different worktrees see the same PRs.
+
+## Building from source
+
+### Binary only
+
+```bash
+go build -o lgit ./cmd/lgit
+```
+
+### Rebuild the web UI
+
+Only needed when you change files under `web/`:
+
+```bash
+cd web
+npm install          # first time
+npm run build        # → ../internal/server/dist
+```
+
+`internal/server/dist` is **tracked in git** on purpose: `//go:embed all:dist` requires those assets on disk at compile time. After UI changes, rebuild and commit the regenerated `dist/` with your source.
+
+### Frontend dev (hot reload)
+
+```bash
+# terminal 1
+lgit serve
+
+# terminal 2
+cd web && npm run dev
+```
+
+Vite proxies `/api` to `http://127.0.0.1:7333`.
 
 ## Testing
-
-Go unit tests cover the git plumbing (against a temp repo with real worktrees),
-the store CRUD, the HTTP API (`httptest` against real scratch repos), and the MCP
-tools (in-process MCP client over in-memory transports):
 
 ```bash
 go build ./... && go vet ./... && go test ./...
 ```
 
-There are no frontend unit tests; the UI is verified manually via the end-to-end
-flow described in [`docs/SPEC.md`](docs/SPEC.md#verification) (create a scratch repo
-and worktree, `lgit pr create`, `lgit serve`, add a comment, reply/resolve, then
-`lgit merge --cleanup`).
+Coverage includes git plumbing (temp repos with real worktrees), store CRUD, HTTP API (`httptest` + scratch repos), and MCP tools (in-process client). The UI is verified manually end-to-end (see [`docs/SPEC.md`](docs/SPEC.md#verification)).
+
+## Project layout
+
+```text
+cmd/lgit/              CLI entry point
+internal/git/          worktree detection, merge-base, diff, merge/cleanup
+internal/store/        SQLite schema + queries
+internal/server/       net/http JSON API + embedded web UI
+internal/server/dist/  built assets (checked in; embedded into the binary)
+internal/mcp/          MCP server (stdio)
+web/                   React + Vite + Shiki source
+docs/SPEC.md           design / roadmap
+```
+
+## Status
+
+Core review loop is usable day-to-day. Design details, schema, and roadmap live in [`docs/SPEC.md`](docs/SPEC.md).
+
+Rough phase map:
+
+| Phase | Scope |
+|-------|--------|
+| **1** (done) | init, PR create, serve + inline comments, approve/request changes, merge + cleanup |
+| **2** (in progress) | MCP, changes-since-last-review, outdated threads; remaining: new-commit notification |
+| **3** | polish (AST-diff toggle, stacked PRs, promote to GitHub via `gh`) |
+
+## Related tools
+
+- [diffx](https://github.com/wong2/diffx) / [difit](https://github.com/yoshiko-pg/difit) — local diff review UIs (no persistent multi-PR lifecycle)
+- Real GitHub/GitLab PRs — still the right place for shared remote review; `lgit` is intentionally local-only
+
+## Contributing
+
+Issues and PRs welcome at [github.com/mattacton/lgit](https://github.com/mattacton/lgit).
+
+```bash
+go build ./... && go vet ./... && go test ./...
+```
+
+If you touch `web/`, run `cd web && npm run build` and include the updated `internal/server/dist/` in your commit.

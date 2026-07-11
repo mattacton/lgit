@@ -172,3 +172,6 @@ lgit/
 - I have no indicators or easy way to identify which files had comments (resolved or not) in the PR after an agent has made updates and responded
 - Should we allow images in comments? And, if we do, we'll probably want to have some sort of cleanup based on time or number of PRs so we don't turn into a silent way to fill up hard drive space.
 - I would like to be able to comment on a file as a whole.
+- Ability to render markdown files. 
+- File view is too narrow. Should it grow with browser width?
+- Add author info like which agent / model made the PR.

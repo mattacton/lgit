@@ -8,6 +8,24 @@ GitHub (or any remote) stays where it is. This is a **local review layer** on to
 
 One Go binary. Web UI embedded. SQLite store shared across every worktree of a repo. Optional MCP server so agents can read comments, reply, and resolve without leaving the terminal.
 
+## Screenshots
+
+**Dashboard** — open PRs across worktrees, filter by state:
+
+![lgit dashboard](docs/images/dashboard.png)
+
+**PR review** — side-by-side diffs, file tree, approve / request changes / merge:
+
+![lgit PR detail](docs/images/pr-detail.png)
+
+**Inline comments** — threads on any line; agents reply and resolve via CLI or MCP:
+
+![lgit inline comments](docs/images/comments.png)
+
+**Changes since last review** — re-review only what landed after your last verdict:
+
+![lgit changes since last review](docs/images/changes-since-review.png)
+
 ## Why
 
 Closest tools ([diffx](https://github.com/wong2/diffx), [difit](https://github.com/yoshiko-pg/difit)) are excellent *diff viewers*, not *PR forges*: comments are ephemeral, there’s no multi-PR store, no merge, and worktrees aren’t first-class. Agent orchestrators usually push review through real GitHub PRs.

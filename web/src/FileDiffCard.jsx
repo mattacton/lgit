@@ -27,7 +27,7 @@ function formatBytes(bytes) {
 
 // Splits a path so the directory portion can be dimmed and the filename kept
 // at full contrast.
-function PathParts({path}) {
+export function PathParts({path}) {
     const idx = path.lastIndexOf('/');
     if (idx === -1) return <>{path}</>;
     return <><span className="file-path-dir">{path.slice(0, idx + 1)}</span>{path.slice(idx + 1)}</>;
@@ -125,15 +125,22 @@ export default function FileDiffCard({
         };
     }, [hunks, path, skipHighlight]);
 
-    // Inline comment widgets: existing threads + the in-progress form.
-    const widgets = useMemo(() => {
+    // Inline comment widgets: existing threads + the in-progress form. Threads
+    // whose anchor line is no longer in the diff (the code was fixed, or the
+    // hunk changed) are collected instead of dropped, and rendered in a
+    // fallback strip at the bottom of the card.
+    const {widgets, unanchored} = useMemo(() => {
         const map = {};
+        const orphans = [];
         const add = (changeKey, node) => {
             map[changeKey] = map[changeKey] ? [...map[changeKey], node] : [node];
         };
         for (const t of threads) {
             const change = findChange(hunks, t.side, t.line);
-            if (!change) continue;
+            if (!change) {
+                orphans.push(t);
+                continue;
+            }
             add(getChangeKey(change), (
                 <CommentThread key={`t${t.id}`} thread={t} onChanged={onThreadsChanged} inline />
             ));
@@ -157,9 +164,12 @@ export default function FileDiffCard({
                 />
             ));
         }
-        return Object.fromEntries(
-            Object.entries(map).map(([k, nodes]) => [k, <div className="widget-stack">{nodes}</div>])
-        );
+        return {
+            widgets: Object.fromEntries(
+                Object.entries(map).map(([k, nodes]) => [k, <div className="widget-stack">{nodes}</div>])
+            ),
+            unanchored: orphans,
+        };
     }, [threads, hunks, pending, path, prNumber, onThreadsChanged]);
 
     const gutterEvents = useMemo(() => ({
@@ -174,6 +184,7 @@ export default function FileDiffCard({
     }), []);
 
     const unresolved = threads.filter(t => !t.resolved).length;
+    const resolved = threads.length - unresolved;
     const outdated = threads.filter(t => t.outdated).length;
     const toggleCollapsed = () => setCollapsed(c => !c);
 
@@ -198,6 +209,7 @@ export default function FileDiffCard({
                 </span>
                 {tooLarge && <span className="badge badge-sm badge-large">large</span>}
                 {unresolved > 0 && <span className="badge badge-sm badge-open">{unresolved}</span>}
+                {resolved > 0 && <span className="badge badge-sm badge-resolved">{resolved} resolved</span>}
                 {outdated > 0 && <span className="badge badge-sm badge-outdated">{outdated} outdated</span>}
                 <label className="viewed-toggle" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={isViewed} onChange={onToggleViewed} /> Viewed
@@ -255,6 +267,19 @@ export default function FileDiffCard({
                         })}
                     </Diff>
                 )
+            )}
+            {!collapsed && unanchored.length > 0 && (
+                <div className="file-threads">
+                    <div className="file-threads-label">
+                        {unanchored.length} conversation{unanchored.length === 1 ? '' : 's'} on lines not shown
+                        in the current diff
+                    </div>
+                    <div className="widget-stack">
+                        {unanchored.map(t => (
+                            <CommentThread key={t.id} thread={t} onChanged={onThreadsChanged} inline />
+                        ))}
+                    </div>
+                </div>
             )}
         </section>
     );

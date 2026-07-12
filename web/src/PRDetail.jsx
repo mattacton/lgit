@@ -1,8 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {api} from './api.js';
 import {StateBadge} from './ui.jsx';
-import FileTree from './FileTree.jsx';
-import FileDiffCard from './FileDiffCard.jsx';
+import FileTree, {fileAnchor} from './FileTree.jsx';
+import FileDiffCard, {PathParts} from './FileDiffCard.jsx';
 import {CommentThread, CommentForm} from './CommentThread.jsx';
 
 function viewedKey(number) {
@@ -122,6 +122,15 @@ export default function PRDetail({number}) {
         ? files.filter(f => (f.new_path || f.old_path).toLowerCase().includes(filter.toLowerCase()))
         : files;
     const unresolvedCount = threads.filter(t => !t.resolved).length;
+    const resolvedCount = threads.length - unresolvedCount;
+    // Files that have threads but are no longer in the diff (the commented
+    // code was reverted or the diff scope excludes them) still get a card, so
+    // their conversations never vanish from the review.
+    const diffPaths = new Set(files.map(f => f.new_path || f.old_path));
+    const orphanPaths = [...threadsByFile.keys()]
+        .filter(p => p && !diffPaths.has(p))
+        .filter(p => !filter || p.toLowerCase().includes(filter.toLowerCase()))
+        .sort();
     const totalPatchBytes = files.reduce((sum, f) => sum + (f.patch ? f.patch.length : 0), 0);
     const defaultCollapsed = files.length > LARGE_PR_FILES || totalPatchBytes > LARGE_PR_BYTES;
     const needsReviewStateReminder = pr.state === 'open' && unresolvedCount > 0;
@@ -156,6 +165,12 @@ export default function PRDetail({number}) {
                     <span className={unresolvedCount > 0 ? 'meta-unresolved' : undefined}>
                         {unresolvedCount} unresolved
                     </span>
+                    {resolvedCount > 0 && (
+                        <>
+                            <span className="sep">·</span>
+                            <span>{resolvedCount} resolved</span>
+                        </>
+                    )}
                     <button className="btn btn-small" onClick={reload}>↻ Refresh</button>
                 </div>
                 {pr.body && <p className="pr-body">{pr.body}</p>}
@@ -283,7 +298,22 @@ export default function PRDetail({number}) {
                             />
                         );
                     })}
-                    {shownFiles.length === 0 && (
+                    {orphanPaths.map(p => (
+                        <section key={p} className="file-card" id={fileAnchor(p)}>
+                            <header className="file-card-header file-card-header-plain">
+                                <span className="file-path"><PathParts path={p} /></span>
+                                <span className="badge badge-sm badge-outdated">not in this diff</span>
+                            </header>
+                            <div className="file-threads">
+                                <div className="widget-stack">
+                                    {(threadsByFile.get(p) || []).map(t => (
+                                        <CommentThread key={t.id} thread={t} onChanged={reloadThreads} inline />
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+                    ))}
+                    {shownFiles.length === 0 && orphanPaths.length === 0 && (
                         <p className="empty">
                             {diffScope === 'last-review' ? 'No changes since the last review.' : 'No files match.'}
                         </p>

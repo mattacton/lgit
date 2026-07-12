@@ -339,6 +339,9 @@ input:focus, textarea:focus { border-color: var(--accent); }
     color: var(--accent); background: var(--accent-soft);
     border: 1px solid var(--accent-border); border-radius: 999px; padding: 0 6px;
 }
+.tree-comments-resolved {
+    color: var(--text-faint); background: transparent; border-color: var(--border);
+}
 .tree-viewed { color: var(--add); }
 .add { color: var(--add); }
 .del { color: var(--del); }
@@ -457,6 +460,28 @@ input:focus, textarea:focus { border-color: var(--accent); }
     background: var(--surface); padding: 10px 12px;
 }
 .thread-inline .comment + .comment { margin-top: 12px; }
+
+/* resolved thread, collapsed to a one-line summary */
+.thread-collapsed {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 12px; cursor: pointer; text-align: left;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); color: var(--text-dim);
+    font-family: var(--font-ui); font-size: 12px;
+}
+.thread-collapsed:hover { background: var(--surface-2); }
+.thread-collapsed-inline { border-radius: 8px; }
+.thread-snippet {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-dim);
+}
+.thread-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+
+/* threads pinned to a file but not anchored to a visible diff line */
+.file-threads { border-top: 1px solid var(--border-soft); background: var(--surface-2); padding: 10px 12px 12px; }
+.file-threads-label { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin: 0 0 8px; }
+.file-card-header-plain { cursor: default; }
+.file-card-header-plain:hover { background: var(--surface); }
 
 /* a message */
 .comment { display: flex; gap: 10px; }

@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {api} from './api.js';
 import {timeAgo} from './ui.jsx';
 
@@ -64,6 +64,10 @@ function StatusPills({thread}) {
 // the presentation differs — the reply/resolve logic is identical.
 export function CommentThread({thread, onChanged, inline = false}) {
     const [replying, setReplying] = useState(false);
+    // Resolved threads stay visible but collapse to a one-line summary, so
+    // reviewing what was addressed doesn't crowd out the live discussion.
+    const [collapsed, setCollapsed] = useState(thread.resolved);
+    useEffect(() => setCollapsed(thread.resolved), [thread.resolved]);
 
     const reply = async body => {
         await api.addComment(thread.id, {body, author: 'user'});
@@ -107,6 +111,7 @@ export function CommentThread({thread, onChanged, inline = false}) {
             {thread.resolved
                 ? <button className="act-text" onClick={() => setResolved(false)}>Unresolve</button>
                 : <button className="act-text act-text-resolve" onClick={() => setResolved(true)}>Resolve</button>}
+            {thread.resolved && <button className="act-text" onClick={() => setCollapsed(true)}>Hide</button>}
         </div>
     ) : (
         <div className="thread-actions">
@@ -114,8 +119,29 @@ export function CommentThread({thread, onChanged, inline = false}) {
             {thread.resolved
                 ? <button className="act-btn" onClick={() => setResolved(false)}>Unresolve</button>
                 : <button className="act-btn act-resolve" onClick={() => setResolved(true)}>Resolve</button>}
+            {thread.resolved && <button className="act-btn" onClick={() => setCollapsed(true)}>Hide</button>}
         </div>
     );
+
+    if (thread.resolved && collapsed) {
+        const first = thread.comments[0];
+        const n = thread.comments.length;
+        return (
+            <button
+                className={'thread-collapsed' + (inline ? ' thread-collapsed-inline' : '')}
+                onClick={() => setCollapsed(false)}
+                title="Show resolved thread"
+            >
+                <span className="chevron">▸</span>
+                <span className="badge badge-sm badge-resolved">Resolved</span>
+                {thread.file_path && (
+                    <span className="comment-loc">:{thread.line}</span>
+                )}
+                {first && <span className="thread-snippet">{first.author}: {first.body}</span>}
+                <span className="thread-count">{n} comment{n === 1 ? '' : 's'}</span>
+            </button>
+        );
+    }
 
     if (inline) {
         return (

@@ -39,7 +39,9 @@ function TreeLevel({node, depth, viewed, threadsByFile, selected, onSelect}) {
                 </React.Fragment>
             ))}
             {node.files.sort((a, b) => a.name.localeCompare(b.name)).map(f => {
-                const threadCount = (threadsByFile.get(f.path) || []).filter(t => !t.resolved).length;
+                const fileThreads = threadsByFile.get(f.path) || [];
+                const threadCount = fileThreads.filter(t => !t.resolved).length;
+                const resolvedCount = fileThreads.length - threadCount;
                 const cls = 'tree-file' + (selected === f.path ? ' tree-file-selected' : '');
                 return (
                     <a key={f.path} className={cls} style={indent} href={`#${window.location.hash.slice(1).split('?')[0]}`}
@@ -52,6 +54,11 @@ function TreeLevel({node, depth, viewed, threadsByFile, selected, onSelect}) {
                         <span className={`tree-name status-${f.status}`}>{f.name}</span>
                         <span className="tree-meta">
                             {threadCount > 0 && <span className="tree-comments">{threadCount}</span>}
+                            {resolvedCount > 0 && (
+                                <span className="tree-comments tree-comments-resolved" title={`${resolvedCount} resolved`}>
+                                    ✓{resolvedCount}
+                                </span>
+                            )}
                             <span className="add">+{f.additions}</span>
                             <span className="del">−{f.deletions}</span>
                             {viewed[f.path] && <span className="tree-viewed">✓</span>}

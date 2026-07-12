@@ -95,6 +95,13 @@ badge when `anchor_sha` ≠ current `head_sha` and the anchored line changed (de
 only, no auto-migrate in v1); Merge button — rebase-only (other modes stay CLI-only),
 with a "clean up worktree" checkbox (default on) matching `lgit merge --cleanup`.
 
+Threads never disappear from the review: resolved threads stay visible as collapsed
+one-line summaries (expand / Hide, auto-collapse on resolve); threads whose anchor
+line is no longer in the current diff render in a per-file strip below the diff;
+files with threads but no diff entry get a thread-only card ("not in this diff");
+unresolved + resolved counts surface in the PR header, file-card badges, and the
+file tree.
+
 ### 3. MCP server
 `lgit mcp` (stdio, official `modelcontextprotocol/go-sdk`): `list_prs`, `get_pr`,
 `get_unresolved_comments(pr)`, `reply_comment(thread, body)`,
@@ -169,7 +176,6 @@ lgit/
 
 ## Things Matt wants
 
-- I have no indicators or easy way to identify which files had comments (resolved or not) in the PR after an agent has made updates and responded
 - Should we allow images in comments? And, if we do, we'll probably want to have some sort of cleanup based on time or number of PRs so we don't turn into a silent way to fill up hard drive space.
 - I would like to be able to comment on a file as a whole.
 - Ability to render markdown files. 

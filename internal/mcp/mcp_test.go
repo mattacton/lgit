@@ -175,8 +175,8 @@ func TestToolsRegistered(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	want := []string{"get_pr", "get_unresolved_comments", "list_prs",
-		"mark_pr_ready", "reply_comment", "resolve_comment"}
+	want := []string{"create_comment", "create_review", "get_pr", "get_unresolved_comments",
+		"list_prs", "mark_pr_ready", "reply_comment", "resolve_comment"}
 	if !slices.Equal(names, want) {
 		t.Errorf("tools = %v, want %v", names, want)
 	}
@@ -280,6 +280,94 @@ func TestCommentLoop(t *testing.T) {
 	}
 	if msg := callErr(t, f.cs, "resolve_comment", map[string]any{"thread_id": 999}); !strings.Contains(msg, "not found") {
 		t.Errorf("missing thread error = %q", msg)
+	}
+}
+
+func TestCreateComment(t *testing.T) {
+	f := newFixture(t)
+	pr := f.createPR()
+
+	inline := callOK[store.Thread](t, f.cs, "create_comment", map[string]any{
+		"number": 1, "body": "why brave?", "file_path": "a.txt", "line": 2,
+	})
+	if inline.FilePath != "a.txt" || inline.Line != 2 || inline.Side != "new" {
+		t.Errorf("inline = %+v", inline)
+	}
+	if inline.AnchorSHA != pr.HeadSHA {
+		t.Errorf("anchor = %s, want %s", inline.AnchorSHA, pr.HeadSHA)
+	}
+	if len(inline.Comments) != 1 || inline.Comments[0].Author != "agent" || inline.Comments[0].Body != "why brave?" {
+		t.Errorf("first comment: %+v", inline.Comments)
+	}
+
+	prLevel := callOK[store.Thread](t, f.cs, "create_comment", map[string]any{
+		"number": 1, "body": "overall note",
+	})
+	if prLevel.FilePath != "" || prLevel.Line != 0 {
+		t.Errorf("PR-level = %+v", prLevel)
+	}
+
+	if msg := callErr(t, f.cs, "create_comment", map[string]any{"number": 1, "body": "  "}); !strings.Contains(msg, "body is required") {
+		t.Errorf("empty body error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "create_comment", map[string]any{
+		"number": 1, "body": "x", "file_path": "a.txt",
+	}); !strings.Contains(msg, "line is required") {
+		t.Errorf("file without line error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "create_comment", map[string]any{
+		"number": 1, "body": "x", "line": 2,
+	}); !strings.Contains(msg, "file_path is required") {
+		t.Errorf("line without file error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "create_comment", map[string]any{
+		"number": 1, "body": "x", "file_path": "a.txt", "line": 2, "side": "left",
+	}); !strings.Contains(msg, "side must be") {
+		t.Errorf("bad side error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "create_comment", map[string]any{"number": 99, "body": "x"}); !strings.Contains(msg, "not found") {
+		t.Errorf("missing PR error = %q", msg)
+	}
+}
+
+func TestCreateReview(t *testing.T) {
+	f := newFixture(t)
+	pr := f.createPR()
+
+	got := callOK[ReviewResult](t, f.cs, "create_review", map[string]any{
+		"number": 1, "verdict": "request_changes", "body": "needs work",
+	})
+	if got.Review.Verdict != "request_changes" || got.PR.State != "changes_requested" {
+		t.Errorf("request_changes: %+v", got)
+	}
+	if got.Review.HeadSHA != pr.HeadSHA {
+		t.Errorf("head_sha = %s, want %s", got.Review.HeadSHA, pr.HeadSHA)
+	}
+
+	got = callOK[ReviewResult](t, f.cs, "create_review", map[string]any{
+		"number": 1, "verdict": "approve",
+	})
+	if got.PR.State != "approved" {
+		t.Errorf("approve: state = %q", got.PR.State)
+	}
+
+	if msg := callErr(t, f.cs, "create_review", map[string]any{
+		"number": 1, "verdict": "comment",
+	}); !strings.Contains(msg, "approve or request_changes") {
+		t.Errorf("comment verdict error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "create_review", map[string]any{"number": 99, "verdict": "approve"}); !strings.Contains(msg, "not found") {
+		t.Errorf("missing PR error = %q", msg)
+	}
+
+	if err := f.st.UpdatePRState(pr.ID, "merged"); err != nil {
+		t.Fatal(err)
+	}
+	got = callOK[ReviewResult](t, f.cs, "create_review", map[string]any{
+		"number": 1, "verdict": "approve",
+	})
+	if got.PR.State != "merged" {
+		t.Errorf("approve on merged PR set state to %q, want merged", got.PR.State)
 	}
 }
 

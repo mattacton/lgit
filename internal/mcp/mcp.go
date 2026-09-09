@@ -37,12 +37,18 @@ func NewServer(dir string) *sdk.Server {
 	sdk.AddTool(srv, &sdk.Tool{Name: "get_unresolved_comments",
 		Description: "List a PR's unresolved review threads (file, line, comments). Address each one, then reply_comment and resolve_comment."},
 		t.getUnresolvedComments)
+	sdk.AddTool(srv, &sdk.Tool{Name: "create_comment",
+		Description: "Start a new review thread as the agent. Omit file_path for a PR-level note; set file_path and line for an inline comment. Does not merge."},
+		t.createComment)
 	sdk.AddTool(srv, &sdk.Tool{Name: "reply_comment",
 		Description: "Reply to a review thread as the agent — say what you changed and where."},
 		t.replyComment)
 	sdk.AddTool(srv, &sdk.Tool{Name: "resolve_comment",
 		Description: "Mark a review thread resolved. Only resolve threads you actually addressed."},
 		t.resolveComment)
+	sdk.AddTool(srv, &sdk.Tool{Name: "create_review",
+		Description: "Submit a review verdict (approve or request_changes). Does not merge — merging is the human's job."},
+		t.createReview)
 	sdk.AddTool(srv, &sdk.Tool{Name: "mark_pr_ready",
 		Description: "After addressing all review feedback, flip a changes_requested PR back to open to signal it is ready for re-review."},
 		t.markPRReady)
@@ -159,6 +165,55 @@ func (t *tools) getUnresolvedComments(ctx context.Context, req *sdk.CallToolRequ
 	return nil, ThreadsResult{Threads: threads}, nil
 }
 
+// CreateCommentArgs is the input for create_comment.
+type CreateCommentArgs struct {
+	Number   int64  `json:"number" jsonschema:"the PR number"`
+	Body     string `json:"body" jsonschema:"the comment text"`
+	FilePath string `json:"file_path,omitempty" jsonschema:"file path for an inline comment; omit for a PR-level note"`
+	Line     int64  `json:"line,omitempty" jsonschema:"line number; required with file_path"`
+	Side     string `json:"side,omitempty" jsonschema:"diff side: old or new (default new)"`
+}
+
+func (t *tools) createComment(ctx context.Context, req *sdk.CallToolRequest, args CreateCommentArgs) (*sdk.CallToolResult, store.Thread, error) {
+	var zero store.Thread
+	if strings.TrimSpace(args.Body) == "" {
+		return nil, zero, fmt.Errorf("body is required")
+	}
+	switch {
+	case args.FilePath == "" && args.Line == 0:
+	case args.FilePath != "" && args.Line > 0:
+	case args.FilePath != "":
+		return nil, zero, fmt.Errorf("line is required with file_path")
+	default:
+		return nil, zero, fmt.Errorf("file_path is required with line")
+	}
+	side := args.Side
+	if side == "" {
+		side = "new"
+	}
+	if side != "old" && side != "new" {
+		return nil, zero, fmt.Errorf("side must be old or new")
+	}
+	repo, st, err := t.open()
+	if err != nil {
+		return nil, zero, err
+	}
+	defer st.Close()
+	pr, err := prByNumber(st, args.Number)
+	if err != nil {
+		return nil, zero, err
+	}
+	pr = server.New(st, repo).RefreshPR(pr)
+	th, err := st.CreateThread(store.Thread{
+		PRID: pr.ID, FilePath: args.FilePath, Line: args.Line,
+		Side: side, AnchorSHA: pr.HeadSHA,
+	}, "agent", args.Body)
+	if err != nil {
+		return nil, zero, err
+	}
+	return nil, *th, nil
+}
+
 // ReplyArgs is the input for reply_comment.
 type ReplyArgs struct {
 	ThreadID int64  `json:"thread_id" jsonschema:"the review thread id"`
@@ -203,6 +258,40 @@ func (t *tools) resolveComment(ctx context.Context, req *sdk.CallToolRequest, ar
 		return nil, zero, err
 	}
 	return nil, *th, nil
+}
+
+// CreateReviewArgs is the input for create_review.
+type CreateReviewArgs struct {
+	Number  int64  `json:"number" jsonschema:"the PR number"`
+	Verdict string `json:"verdict" jsonschema:"approve or request_changes"`
+	Body    string `json:"body,omitempty" jsonschema:"optional review summary"`
+}
+
+// ReviewResult is the output of create_review.
+type ReviewResult struct {
+	Review store.Review `json:"review"`
+	PR     store.PR     `json:"pr"`
+}
+
+func (t *tools) createReview(ctx context.Context, req *sdk.CallToolRequest, args CreateReviewArgs) (*sdk.CallToolResult, ReviewResult, error) {
+	var zero ReviewResult
+	if args.Verdict != "approve" && args.Verdict != "request_changes" {
+		return nil, zero, fmt.Errorf("verdict must be approve or request_changes")
+	}
+	repo, st, err := t.open()
+	if err != nil {
+		return nil, zero, err
+	}
+	defer st.Close()
+	pr, err := prByNumber(st, args.Number)
+	if err != nil {
+		return nil, zero, err
+	}
+	rev, fresh, err := server.New(st, repo).SubmitReview(pr, args.Verdict, args.Body)
+	if err != nil {
+		return nil, zero, err
+	}
+	return nil, ReviewResult{Review: *rev, PR: *fresh}, nil
 }
 
 func (t *tools) markPRReady(ctx context.Context, req *sdk.CallToolRequest, args PRArgs) (*sdk.CallToolResult, store.PR, error) {

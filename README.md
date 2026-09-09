@@ -6,7 +6,7 @@ When several coding agents (or humans) each work in their own git worktree, `lgi
 
 GitHub (or any remote) stays where it is. This is a **local review layer** on top of worktrees.
 
-One Go binary. Web UI embedded. SQLite store shared across every worktree of a repo. Optional MCP server so agents can read comments, reply, and resolve without leaving the terminal.
+One Go binary. Web UI embedded. SQLite store shared across every worktree of a repo. Optional MCP server so agents can comment, reply, resolve, and submit review verdicts without leaving the terminal. Merge stays a human action.
 
 ## Screenshots
 
@@ -18,7 +18,7 @@ One Go binary. Web UI embedded. SQLite store shared across every worktree of a r
 
 ![lgit PR detail](docs/images/pr-detail.png)
 
-**Inline comments** — threads on any line; agents reply and resolve via CLI or MCP:
+**Inline comments** — threads on any line; agents comment, reply, and resolve via CLI or MCP:
 
 ![lgit inline comments](docs/images/comments.png)
 
@@ -44,7 +44,7 @@ Closest tools ([diffx](https://github.com/wong2/diffx), [difit](https://github.c
 - **Browser review UI** — side-by-side / unified diffs, Shiki highlighting, file tree, collapse unchanged, viewed checkboxes, inline threads, PR-level conversation
 - **Review lifecycle** — open → changes requested / approved → merged / closed; “changes since last review”; outdated-thread badges
 - **Merge** — default rebase (linear history); squash and merge-commit available on the CLI; optional worktree + branch cleanup
-- **Agent contract** — `lgit pr comments --json`, reply / resolve / ready; or MCP tools over stdio
+- **Agent contract** — `lgit pr comments --json`, comment / reply / resolve / review / ready; or MCP tools over stdio. Merging is always the human's call.
 - **Single binary** — pure-Go SQLite (no cgo), UI embedded via `//go:embed`
 
 ## Install
@@ -93,7 +93,13 @@ lgit pr reply <thread-id> "Fixed in the last commit." --author agent
 lgit pr resolve <thread-id>
 lgit pr ready <number>        # changes_requested → open
 
-# integrate
+# agents reviewing a PR (does not merge)
+lgit pr comment <number> "overall note"
+lgit pr comment <number> "why this?" --file src/foo.go --line 12
+lgit pr review <number> --request-changes --body "needs tests"
+lgit pr review <number> --approve
+
+# integrate (human)
 lgit merge <number> --cleanup # default: rebase; also --squash / --merge
 lgit sweep                    # finish leftover cleanup for merged PRs
 ```
@@ -125,7 +131,7 @@ All worktrees of a repo share `--git-common-dir`, so that single DB is visible f
 
 **Human side:** open the dashboard, review the diff, comment on lines, request changes or approve, merge when ready.
 
-**Agent side:** list open PRs, fetch unresolved threads as JSON (or via MCP), apply fixes, reply with what changed, resolve only threads actually addressed, then `lgit pr ready` so the PR is open for re-review again.
+**Agent side:** list open PRs, fetch unresolved threads as JSON (or via MCP), apply fixes, reply with what changed, resolve only threads actually addressed, then `lgit pr ready` so the PR is open for re-review again. Agents can also review other PRs (`lgit pr comment` / `lgit pr review`, or the MCP twins). Merging is always the human's call.
 
 ## CLI
 
@@ -136,8 +142,10 @@ All worktrees of a repo share `--git-common-dir`, so that single DB is visible f
 | `lgit pr list [--state] [--json]` | List PRs |
 | `lgit pr view <n>` | Show one PR |
 | `lgit pr comments <n> [--unresolved] [--json]` | List threads (JSON = agent contract) |
+| `lgit pr comment <n> <body> [--file F --line N]` | Start a thread (omit `--file` for PR-level) |
 | `lgit pr reply <thread-id> <body> [--author agent]` | Reply on a thread |
 | `lgit pr resolve <thread-id>` | Resolve a thread |
+| `lgit pr review <n> --approve\|--request-changes [--body]` | Submit a review verdict (does not merge) |
 | `lgit pr ready <n>` | Mark `changes_requested` ready for re-review |
 | `lgit pr checkout <n>` | Detach HEAD at the PR tip to try the code |
 | `lgit serve [--port 7333]` | Web UI + JSON API |
@@ -152,9 +160,13 @@ All worktrees of a repo share `--git-common-dir`, so that single DB is visible f
 - `list_prs`
 - `get_pr`
 - `get_unresolved_comments`
+- `create_comment`
 - `reply_comment`
 - `resolve_comment`
+- `create_review`
 - `mark_pr_ready`
+
+There is no merge tool. Merging stays CLI/UI for humans.
 
 ### Claude Code (user-wide)
 

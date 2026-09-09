@@ -28,7 +28,9 @@ change reviewable on its own.
 4. **Act on review feedback:** `lgit pr comments <n> --unresolved --json` → make the
    fixes → `lgit pr reply <thread-id> "<what changed>" --author agent` and
    `lgit pr resolve <thread-id>`. Never resolve a thread you didn't actually address.
-5. **Don't merge your own PR** — merging is the reviewer's call.
+5. **Don't merge your own PR** — merging is always the human's call (`lgit merge`
+   / the UI merge button). Agents may comment and submit review verdicts
+   (`lgit pr comment` / `lgit pr review`) but must never merge.
 
 The `lgit-open-pr` and `lgit-review` skills automate steps 1–5; they trigger
 automatically, so you usually don't need to invoke anything by hand.

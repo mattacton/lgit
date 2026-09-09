@@ -70,7 +70,11 @@ new agent commits appear.
 - `lgit pr view <id>` / `lgit pr comments <id> [--unresolved] [--json]` — JSON is the
   agent-facing contract.
 - `lgit serve [--port]` — start web UI + API (+ optionally MCP over HTTP).
+- `lgit pr comment <id> <body> [--file F --line N]` — start a thread (omit `--file`
+  for a PR-level note). CLI twin of MCP `create_comment`.
 - `lgit pr resolve <thread-id>` / `lgit pr reply <thread-id> <body>` — also for agents.
+- `lgit pr review <id> --approve|--request-changes [--body]` — submit a review
+  verdict (does not merge). CLI twin of MCP `create_review`.
 - `lgit pr ready <id>` — CLI twin of MCP `mark_pr_ready` (changes_requested → open),
   for agents running without an MCP client.
 - `lgit pr checkout <id>` — detach the invoking checkout at the PR head so the
@@ -104,12 +108,15 @@ file tree.
 
 ### 3. MCP server
 `lgit mcp` (stdio, official `modelcontextprotocol/go-sdk`): `list_prs`, `get_pr`,
-`get_unresolved_comments(pr)`, `reply_comment(thread, body)`,
-`resolve_comment(thread)`, `mark_pr_ready(pr)`. `mark_pr_ready` flips
-`changes_requested` → `open` (no new state; the review history distinguishes
-re-reviews). Repo/store are resolved per tool call so the server starts cleanly
-outside lgit repos (safe for user-wide registration). HTTP-transport MCP via
-`lgit serve` deferred until needed.
+`get_unresolved_comments(pr)`, `create_comment(pr, body, file?, line?)`,
+`reply_comment(thread, body)`, `resolve_comment(thread)`,
+`create_review(pr, verdict)`, `mark_pr_ready(pr)`. `create_comment` starts an
+inline thread or a PR-level note (omit file/line). `create_review` is
+`approve` / `request_changes` only. There is no merge tool — merging stays
+CLI/UI for humans. `mark_pr_ready` flips `changes_requested` → `open` (no new
+state; the review history distinguishes re-reviews). Repo/store are resolved
+per tool call so the server starts cleanly outside lgit repos (safe for
+user-wide registration). HTTP-transport MCP via `lgit serve` deferred until needed.
 
 ## The loop
 
@@ -172,7 +179,8 @@ lgit/
   5. `lgit pr reply` + `lgit pr resolve`; confirm UI + "changes since last review" after a new commit.
   6. `lgit merge <id> --cleanup`; confirm `main` has the change and worktree/branch are gone.
 - **MCP (Phase 2):** point a Claude Code agent at the `lgit` MCP server; confirm it can
-  list PRs, read unresolved comments, reply, and resolve.
+  list PRs, read unresolved comments, start a thread, reply, resolve, and submit a
+  review verdict. There is no merge tool.
 
 ## Things Matt wants
 

@@ -27,9 +27,13 @@ Usage:
   lgit pr view <number>                          show one PR
   lgit pr comments <number> [--unresolved] [--json]
                                                  list comment threads (JSON = agent contract)
+  lgit pr comment <number> <body> [--file F --line N] [--side new] [--author agent]
+                                                 start a thread (omit --file for PR-level)
   lgit pr reply <thread-id> <body> [--author agent]
                                                  reply to a thread
   lgit pr resolve <thread-id>                    resolve a thread
+  lgit pr review <number> --approve|--request-changes [--body text]
+                                                 submit a review verdict (does not merge)
   lgit pr ready <number>                         mark a changes_requested PR ready for re-review
   lgit pr checkout <number>                      try the PR here on a detached HEAD
   lgit serve [--port 7333]                       start the web review UI + JSON API
@@ -56,7 +60,7 @@ func run(args []string) error {
 		return cmdInit()
 	case "pr":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: lgit pr <create|list|view|comments|reply|resolve|ready|checkout> ...")
+			return fmt.Errorf("usage: lgit pr <create|list|view|comments|comment|reply|resolve|review|ready|checkout> ...")
 		}
 		switch args[1] {
 		case "create":
@@ -67,10 +71,14 @@ func run(args []string) error {
 			return cmdPRView(args[2:])
 		case "comments":
 			return cmdPRComments(args[2:])
+		case "comment":
+			return cmdPRComment(args[2:])
 		case "reply":
 			return cmdPRReply(args[2:])
 		case "resolve":
 			return cmdPRResolve(args[2:])
+		case "review":
+			return cmdPRReview(args[2:])
 		case "ready":
 			return cmdPRReady(args[2:])
 		case "checkout":
@@ -309,6 +317,60 @@ func cmdPRComments(args []string) error {
 	return nil
 }
 
+func cmdPRComment(args []string) error {
+	fs := flag.NewFlagSet("pr comment", flag.ContinueOnError)
+	file := fs.String("file", "", "file path for an inline comment (omit for PR-level)")
+	line := fs.Int("line", 0, "line number (required with --file)")
+	side := fs.String("side", "new", "diff side: old or new")
+	author := fs.String("author", "agent", "comment author (user|agent)")
+	rest, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) < 2 {
+		return fmt.Errorf("usage: lgit pr comment <number> <body> [--file path --line N]")
+	}
+	body := strings.Join(rest[1:], " ")
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("body is required")
+	}
+	filePath := *file
+	lineN := int64(*line)
+	switch {
+	case filePath == "" && lineN == 0:
+	case filePath != "" && lineN > 0:
+	case filePath != "":
+		return fmt.Errorf("--line is required with --file")
+	default:
+		return fmt.Errorf("--file is required with --line")
+	}
+	if *side != "old" && *side != "new" {
+		return fmt.Errorf("side must be old or new")
+	}
+	if *author != "user" && *author != "agent" {
+		return fmt.Errorf("author must be user or agent")
+	}
+	pr, st, repo, err := prByArg(rest[:1])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	pr = refreshPR(st, repo, pr)
+	th, err := st.CreateThread(store.Thread{
+		PRID: pr.ID, FilePath: filePath, Line: lineN,
+		Side: *side, AnchorSHA: pr.HeadSHA,
+	}, *author, body)
+	if err != nil {
+		return err
+	}
+	if filePath == "" {
+		fmt.Printf("created thread %d (PR-level) on PR #%d\n", th.ID, pr.Number)
+	} else {
+		fmt.Printf("created thread %d on %s:%d (%s)\n", th.ID, filePath, lineN, *side)
+	}
+	return nil
+}
+
 func cmdPRReply(args []string) error {
 	fs := flag.NewFlagSet("pr reply", flag.ContinueOnError)
 	author := fs.String("author", "agent", "comment author (user|agent)")
@@ -361,6 +423,44 @@ func cmdPRResolve(args []string) error {
 		return err
 	}
 	fmt.Printf("resolved thread %d\n", tid)
+	return nil
+}
+
+func cmdPRReview(args []string) error {
+	fs := flag.NewFlagSet("pr review", flag.ContinueOnError)
+	approve := fs.Bool("approve", false, "approve the PR")
+	request := fs.Bool("request-changes", false, "request changes")
+	body := fs.String("body", "", "optional review summary")
+	rest, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) < 1 {
+		return fmt.Errorf("usage: lgit pr review <number> --approve|--request-changes [--body text]")
+	}
+	verdict := ""
+	set := 0
+	if *approve {
+		verdict = "approve"
+		set++
+	}
+	if *request {
+		verdict = "request_changes"
+		set++
+	}
+	if set != 1 {
+		return fmt.Errorf("exactly one of --approve or --request-changes is required")
+	}
+	pr, st, repo, err := prByArg(rest)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	rev, fresh, err := server.New(st, repo).SubmitReview(pr, verdict, *body)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("reviewed PR #%d: %s (state: %s)\n", fresh.Number, rev.Verdict, fresh.State)
 	return nil
 }
 

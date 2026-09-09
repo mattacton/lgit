@@ -282,42 +282,59 @@ type createReviewReq struct {
 	Body    string `json:"body"`
 }
 
+// ErrBadVerdict is returned by SubmitReview for an unknown verdict.
+var ErrBadVerdict = errors.New("verdict must be approve, request_changes, or comment")
+
+// SubmitReview records a review at the current PR head and updates state for
+// approve / request_changes unless the PR is already merged or closed.
+func (s *Server) SubmitReview(pr *store.PR, verdict, body string) (*store.Review, *store.PR, error) {
+	pr = s.RefreshPR(pr)
+	var newState string
+	switch verdict {
+	case "approve":
+		newState = "approved"
+	case "request_changes":
+		newState = "changes_requested"
+	case "comment":
+	default:
+		return nil, nil, ErrBadVerdict
+	}
+	rev, err := s.Store.CreateReview(pr.ID, verdict, body, pr.HeadSHA)
+	if err != nil {
+		return nil, nil, err
+	}
+	if newState != "" && pr.State != "merged" && pr.State != "closed" {
+		if err := s.Store.UpdatePRState(pr.ID, newState); err != nil {
+			return nil, nil, err
+		}
+	}
+	fresh, err := s.Store.GetPR(pr.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rev, fresh, nil
+}
+
 func (s *Server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
 	pr, err := s.prFromPath(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	pr = s.RefreshPR(pr)
 	var req createReviewReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		badRequest(w, "invalid JSON: "+err.Error())
 		return
 	}
-	var newState string
-	switch req.Verdict {
-	case "approve":
-		newState = "approved"
-	case "request_changes":
-		newState = "changes_requested"
-	case "comment":
-		// no state change
-	default:
-		badRequest(w, "verdict must be approve, request_changes, or comment")
-		return
-	}
-	rev, err := s.Store.CreateReview(pr.ID, req.Verdict, req.Body, pr.HeadSHA)
+	rev, fresh, err := s.SubmitReview(pr, req.Verdict, req.Body)
 	if err != nil {
+		if errors.Is(err, ErrBadVerdict) {
+			badRequest(w, err.Error())
+			return
+		}
 		writeErr(w, err)
 		return
 	}
-	if newState != "" && pr.State != "merged" && pr.State != "closed" {
-		if err := s.Store.UpdatePRState(pr.ID, newState); err != nil {
-			writeErr(w, err)
-			return
-		}
-	}
-	fresh, _ := s.Store.GetPR(pr.ID)
 	writeJSON(w, http.StatusCreated, map[string]any{"review": rev, "pr": fresh})
 }
 

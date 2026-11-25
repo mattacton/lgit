@@ -35,8 +35,10 @@ func New(st *store.Store, repo *git.Repo) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /api/branches", s.handleListBranches)
 	mux.HandleFunc("GET /api/prs", s.handleListPRs)
 	mux.HandleFunc("GET /api/prs/{number}", s.handleGetPR)
+	mux.HandleFunc("POST /api/prs/{number}/base", s.handleSetBase)
 	mux.HandleFunc("GET /api/prs/{number}/diff", s.handleGetDiff)
 	mux.HandleFunc("GET /api/prs/{number}/threads", s.handleListThreads)
 	mux.HandleFunc("POST /api/prs/{number}/threads", s.handleCreateThread)

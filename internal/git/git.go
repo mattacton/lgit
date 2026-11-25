@@ -165,6 +165,28 @@ func (r *Repo) BranchExists(name string) bool {
 	return err == nil
 }
 
+// LocalBranches returns local branch names (refs/heads), sorted by refname.
+func (r *Repo) LocalBranches() ([]string, error) {
+	out, err := r.run("for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/heads")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return []string{}, nil
+	}
+	var names []string
+	for line := range strings.Lines(out) {
+		line = strings.TrimRight(line, "\n")
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+	if names == nil {
+		return []string{}, nil
+	}
+	return names, nil
+}
+
 // WorktreeForBranch returns the worktree that has the given branch checked
 // out, or nil if none does.
 func (r *Repo) WorktreeForBranch(branch string) (*Worktree, error) {

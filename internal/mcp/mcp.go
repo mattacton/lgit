@@ -52,6 +52,9 @@ func NewServer(dir string) *sdk.Server {
 	sdk.AddTool(srv, &sdk.Tool{Name: "mark_pr_ready",
 		Description: "After addressing all review feedback, flip a changes_requested PR back to open to signal it is ready for re-review."},
 		t.markPRReady)
+	sdk.AddTool(srv, &sdk.Tool{Name: "set_pr_base",
+		Description: "Change a PR's target (base) branch and recompute its diff range. Use when the PR should merge into a branch other than the one it was opened against. Does not merge. An approved PR returns to open so the new diff is reviewed."},
+		t.setPRBase)
 	return srv
 }
 
@@ -292,6 +295,30 @@ func (t *tools) createReview(ctx context.Context, req *sdk.CallToolRequest, args
 		return nil, zero, err
 	}
 	return nil, ReviewResult{Review: *rev, PR: *fresh}, nil
+}
+
+// SetPRBaseArgs is the input for set_pr_base.
+type SetPRBaseArgs struct {
+	Number int64  `json:"number" jsonschema:"the PR number"`
+	Base   string `json:"base" jsonschema:"the local branch the PR should target"`
+}
+
+func (t *tools) setPRBase(ctx context.Context, req *sdk.CallToolRequest, args SetPRBaseArgs) (*sdk.CallToolResult, server.SetBaseResult, error) {
+	var zero server.SetBaseResult
+	repo, st, err := t.open()
+	if err != nil {
+		return nil, zero, err
+	}
+	defer st.Close()
+	pr, err := prByNumber(st, args.Number)
+	if err != nil {
+		return nil, zero, err
+	}
+	res, err := server.New(st, repo).SetBase(pr, args.Base)
+	if err != nil {
+		return nil, zero, err
+	}
+	return nil, *res, nil
 }
 
 func (t *tools) markPRReady(ctx context.Context, req *sdk.CallToolRequest, args PRArgs) (*sdk.CallToolResult, store.PR, error) {

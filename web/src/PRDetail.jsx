@@ -20,6 +20,81 @@ function loadViewed(number) {
 const LARGE_PR_BYTES = 400_000;
 const LARGE_PR_FILES = 20;
 
+function BaseTarget({pr, busy, onChanged}) {
+    const [editing, setEditing] = useState(false);
+    const [branches, setBranches] = useState(null);
+    const [base, setBase] = useState(pr.base_ref);
+    const [saving, setSaving] = useState(false);
+    const [err, setErr] = useState(null);
+    const live = pr.state !== 'merged' && pr.state !== 'closed';
+
+    const startEdit = async () => {
+        setEditing(true);
+        setBase(pr.base_ref);
+        setErr(null);
+        try {
+            setBranches(await api.listBranches());
+        } catch (e) {
+            setErr(e.message);
+        }
+    };
+
+    const save = async () => {
+        const next = base.trim();
+        if (next === pr.base_ref) {
+            setEditing(false);
+            return;
+        }
+        if (pr.state === 'approved' && !window.confirm(
+            `Change the target from ${pr.base_ref} to ${next}? This clears the approval.`,
+        )) return;
+        setSaving(true);
+        setErr(null);
+        try {
+            const res = await api.setBase(pr.number, next);
+            setEditing(false);
+            await onChanged(res);
+        } catch (e) {
+            setErr(e.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!live) return <span className="meta-branch">{pr.base_ref}</span>;
+    if (!editing) {
+        return (
+            <span className="base-target">
+                <span className="meta-branch">{pr.base_ref}</span>
+                <button
+                    className="btn btn-small"
+                    disabled={busy}
+                    title="Change the branch this PR targets"
+                    onClick={startEdit}
+                >
+                    change
+                </button>
+            </span>
+        );
+    }
+    const options = [...new Set([pr.base_ref, ...(branches || [])])].filter(b => b && b !== pr.head_ref);
+    return (
+        <span className="base-target">
+            <select
+                aria-label="Target branch"
+                value={options.includes(base) ? base : pr.base_ref}
+                disabled={!branches || saving}
+                onChange={e => setBase(e.target.value)}
+            >
+                {options.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <button className="btn btn-small" disabled={saving || !branches} onClick={save}>set</button>
+            <button className="btn btn-small" disabled={saving} onClick={() => setEditing(false)}>cancel</button>
+            {err && <span className="base-target-error">{err}</span>}
+        </span>
+    );
+}
+
 export default function PRDetail({number}) {
     const [data, setData] = useState(null); // {pr, files}
     const [threads, setThreads] = useState([]);
@@ -106,6 +181,15 @@ export default function PRDetail({number}) {
         }
     };
 
+    const handleBaseChanged = async res => {
+        setData(d => (d ? {...d, pr: res.pr} : d));
+        setNotice(res.approval_cleared
+            ? `Target is now ${res.pr.base_ref}. Approval was cleared — re-review the new diff.`
+            : `Target is now ${res.pr.base_ref}.`);
+        setError(null);
+        await reload();
+    };
+
     const addPRComment = async body => {
         const thread = await api.createThread(number, {file_path: '', line: 0, side: 'new', body});
         setThreads(prev => [...prev, thread]);
@@ -156,8 +240,10 @@ export default function PRDetail({number}) {
                     <StateBadge state={pr.state} />
                 </div>
                 <div className="pr-header-meta">
-                    <span>
-                        <span className="meta-branch">{pr.head_ref}</span> → {pr.base_ref}
+                    <span className="meta-branches">
+                        <span className="meta-branch">{pr.head_ref}</span>
+                        <span>→</span>
+                        <BaseTarget pr={pr} busy={busy} onChanged={handleBaseChanged} />
                     </span>
                     <span className="sep">·</span>
                     <span title={`${fromSHA || pr.merge_base_sha}..${pr.head_sha}`}>{fromShort}..{headShort}</span>

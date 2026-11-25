@@ -89,6 +89,17 @@ func TestPRCRUD(t *testing.T) {
 		t.Errorf("range update: %+v", got)
 	}
 
+	if err := s.UpdatePRBase(p1.ID, "develop", "d1", "m1", "h1"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetPR(p1.ID)
+	if got.BaseRef != "develop" || got.BaseSHA != "d1" || got.MergeBaseSHA != "m1" || got.HeadSHA != "h1" {
+		t.Errorf("base update: %+v", got)
+	}
+	if err := s.UpdatePRBase(999, "develop", "d", "m", "h"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+
 	open, err := s.ListPRs("open")
 	if err != nil || len(open) != 1 || open[0].ID != p2.ID {
 		t.Errorf("ListPRs(open) = %+v, %v", open, err)

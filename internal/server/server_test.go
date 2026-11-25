@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -175,6 +176,84 @@ func TestListPRs(t *testing.T) {
 	if len(prs) != 1 || prs[0].Number != 2 {
 		t.Errorf("state filter = %+v, want just #2", prs)
 	}
+}
+
+func TestListBranches(t *testing.T) {
+	f := newFixture(t)
+	names := decode[[]string](t, wantStatus(t, f.do("GET", "/api/branches", nil), http.StatusOK))
+	if !slices.Equal(names, []string{"feature", "main"}) {
+		t.Errorf("branches = %v, want [feature main]", names)
+	}
+}
+
+func TestSetBase(t *testing.T) {
+	f := newFixture(t)
+	pr := f.createPR()
+	mustGit(t, f.repoDir, "checkout", "-b", "other")
+	writeFile(t, f.repoDir, "other.txt", "other\n")
+	mustGit(t, f.repoDir, "add", ".")
+	mustGit(t, f.repoDir, "commit", "-m", "other work")
+	mustGit(t, f.repoDir, "checkout", "main")
+	otherSHA := mustGit(t, f.repoDir, "rev-parse", "other")
+	mb := mustGit(t, f.repoDir, "merge-base", "other", "feature")
+
+	res := decode[SetBaseResult](t, wantStatus(t, f.do("POST", "/api/prs/1/base", map[string]string{"base": "other"}), http.StatusOK))
+	if res.PreviousBase != "main" || res.ApprovalCleared {
+		t.Errorf("result flags = %+v", res)
+	}
+	if res.PR.BaseRef != "other" || res.PR.BaseSHA != otherSHA || res.PR.MergeBaseSHA != mb || res.PR.HeadSHA != pr.HeadSHA {
+		t.Errorf("retarget = %+v, want base other sha %s mb %s head %s", res.PR, otherSHA, mb, pr.HeadSHA)
+	}
+	if res.PR.State != "open" {
+		t.Errorf("state = %s, want open", res.PR.State)
+	}
+
+	// Same target refreshes in place and does not clear an approval.
+	if err := f.store.UpdatePRState(pr.ID, "approved"); err != nil {
+		t.Fatal(err)
+	}
+	res = decode[SetBaseResult](t, wantStatus(t, f.do("POST", "/api/prs/1/base", map[string]string{"base": " other "}), http.StatusOK))
+	if res.ApprovalCleared || res.PR.State != "approved" || res.PR.BaseRef != "other" {
+		t.Errorf("same base = %+v", res)
+	}
+
+	res = decode[SetBaseResult](t, wantStatus(t, f.do("POST", "/api/prs/1/base", map[string]string{"base": "main"}), http.StatusOK))
+	if !res.ApprovalCleared || res.PR.State != "open" || res.PR.BaseRef != "main" || res.PreviousBase != "other" {
+		t.Errorf("approval not cleared: %+v state=%s base=%s", res, res.PR.State, res.PR.BaseRef)
+	}
+
+	if err := f.store.UpdatePRState(pr.ID, "changes_requested"); err != nil {
+		t.Fatal(err)
+	}
+	res = decode[SetBaseResult](t, wantStatus(t, f.do("POST", "/api/prs/1/base", map[string]string{"base": "other"}), http.StatusOK))
+	if res.PR.State != "changes_requested" || res.ApprovalCleared || res.PR.BaseRef != "other" {
+		t.Errorf("changes_requested retarget = %+v", res)
+	}
+
+	for _, base := range []string{"missing", "feature", "", "  "} {
+		rec := f.do("POST", "/api/prs/1/base", map[string]string{"base": base})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("base %q status = %d, want 400; body: %s", base, rec.Code, rec.Body.String())
+		}
+	}
+	stored, err := f.store.GetPR(pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.BaseRef != "other" || stored.State != "changes_requested" {
+		t.Errorf("failed retarget mutated PR: %+v", stored)
+	}
+
+	if err := f.store.UpdatePRState(pr.ID, "merged"); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, f.do("POST", "/api/prs/1/base", map[string]string{"base": "main"}), http.StatusBadRequest)
+	if err := f.store.UpdatePRState(pr.ID, "closed"); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, f.do("POST", "/api/prs/1/base", map[string]string{"base": "main"}), http.StatusBadRequest)
+	wantStatus(t, f.do("POST", "/api/prs/99/base", map[string]string{"base": "main"}), http.StatusNotFound)
+	wantStatus(t, f.do("POST", "/api/prs/1/base", "not-json"), http.StatusBadRequest)
 }
 
 func TestGetPR(t *testing.T) {

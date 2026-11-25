@@ -20,7 +20,10 @@ async function request(path, options = {}) {
 
 export const api = {
     listPRs: () => request('/api/prs'),
+    listBranches: () => request('/api/branches'),
     getPR: number => request(`/api/prs/${number}`),
+    setBase: (number, base) =>
+        request(`/api/prs/${number}/base`, {method: 'POST', body: JSON.stringify({base})}),
     getDiff: (number, since) => {
         const query = since ? `?since=${encodeURIComponent(since)}` : '';
         return request(`/api/prs/${number}/diff${query}`);

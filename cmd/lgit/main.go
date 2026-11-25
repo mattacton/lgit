@@ -23,6 +23,7 @@ const usage = `lgit — local-only PR review for git worktrees
 Usage:
   lgit init                                      create the lgit DB at the shared git dir
   lgit pr create [--title T] [--base main]       create a PR from the current worktree
+  lgit pr base <number> <branch>                 change a PR's target branch
   lgit pr list [--state S] [--json]              list PRs
   lgit pr view <number>                          show one PR
   lgit pr comments <number> [--unresolved] [--json]
@@ -60,11 +61,13 @@ func run(args []string) error {
 		return cmdInit()
 	case "pr":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: lgit pr <create|list|view|comments|comment|reply|resolve|review|ready|checkout> ...")
+			return fmt.Errorf("usage: lgit pr <create|base|list|view|comments|comment|reply|resolve|review|ready|checkout> ...")
 		}
 		switch args[1] {
 		case "create":
 			return cmdPRCreate(args[2:])
+		case "base":
+			return cmdPRBase(args[2:])
 		case "list":
 			return cmdPRList(args[2:])
 		case "view":
@@ -198,6 +201,49 @@ func cmdPRCreate(args []string) error {
 		return err
 	}
 	fmt.Printf("created PR #%d: %s (%s -> %s)\n", pr.Number, pr.Title, pr.HeadRef, pr.BaseRef)
+	return nil
+}
+
+// cmdPRBase is the CLI twin of the MCP set_pr_base tool. Agents (or humans)
+// use it when a PR was opened against the wrong branch.
+func cmdPRBase(args []string) error {
+	fs := flag.NewFlagSet("pr base", flag.ContinueOnError)
+	baseFlag := fs.String("base", "", "target branch (alternative to the positional argument)")
+	pos, err := parseFlagsAnywhere(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) < 1 || len(pos) > 2 {
+		return fmt.Errorf("usage: lgit pr base <number> <branch>")
+	}
+	branch := ""
+	switch {
+	case len(pos) == 2 && *baseFlag != "":
+		return fmt.Errorf("pass the target branch once, either as an argument or --base")
+	case len(pos) == 2:
+		branch = pos[1]
+	case *baseFlag != "":
+		branch = *baseFlag
+	default:
+		return fmt.Errorf("usage: lgit pr base <number> <branch>")
+	}
+	pr, st, repo, err := prByArg(pos[:1])
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	res, err := server.New(st, repo).SetBase(pr, branch)
+	if err != nil {
+		return err
+	}
+	if res.PR.BaseRef == res.PreviousBase {
+		fmt.Printf("PR #%d already targets %s\n", res.PR.Number, res.PR.BaseRef)
+		return nil
+	}
+	fmt.Printf("updated PR #%d base: %s -> %s\n", res.PR.Number, res.PreviousBase, res.PR.BaseRef)
+	if res.ApprovalCleared {
+		fmt.Println("approval cleared; re-review the diff against the new target")
+	}
 	return nil
 }
 

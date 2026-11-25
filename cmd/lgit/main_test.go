@@ -142,6 +142,83 @@ func TestPRComment(t *testing.T) {
 	}
 }
 
+func TestPRBase(t *testing.T) {
+	f := newFixture(t)
+	mustGit(t, f.dir, "checkout", "-b", "other")
+	writeFile(t, f.dir, "other.txt", "other\n")
+	mustGit(t, f.dir, "add", ".")
+	mustGit(t, f.dir, "commit", "-m", "other work")
+	mustGit(t, f.dir, "checkout", "main")
+
+	if err := run([]string{"pr", "base", "1", "other"}); err != nil {
+		t.Fatal(err)
+	}
+	pr, err := f.st.GetPR(f.pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr.BaseRef != "other" {
+		t.Fatalf("base = %q, want other", pr.BaseRef)
+	}
+	if pr.BaseSHA != mustGit(t, f.dir, "rev-parse", "other") {
+		t.Errorf("base sha = %s", pr.BaseSHA)
+	}
+	if pr.MergeBaseSHA != mustGit(t, f.dir, "merge-base", "other", "feature") {
+		t.Errorf("merge-base = %s", pr.MergeBaseSHA)
+	}
+
+	if err := run([]string{"pr", "base", "1", "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"pr", "base", "1", "--base", "main"}); err != nil {
+		t.Fatal(err)
+	}
+	pr, err = f.st.GetPR(f.pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr.BaseRef != "main" {
+		t.Errorf("flag form base = %q, want main", pr.BaseRef)
+	}
+
+	if err := f.st.UpdatePRState(f.pr.ID, "approved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"pr", "base", "1", "other"}); err != nil {
+		t.Fatal(err)
+	}
+	pr, err = f.st.GetPR(f.pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr.State != "open" || pr.BaseRef != "other" {
+		t.Errorf("approved retarget = state %q base %q", pr.State, pr.BaseRef)
+	}
+
+	if err := run([]string{"pr", "base"}); err == nil || !strings.Contains(err.Error(), "usage:") {
+		t.Errorf("missing args error = %v", err)
+	}
+	if err := run([]string{"pr", "base", "1", "other", "--base", "main"}); err == nil || !strings.Contains(err.Error(), "once") {
+		t.Errorf("both forms error = %v", err)
+	}
+	if err := run([]string{"pr", "base", "1", "nope"}); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("missing branch error = %v", err)
+	}
+	if err := run([]string{"pr", "base", "1", "feature"}); err == nil || !strings.Contains(err.Error(), "PR head") {
+		t.Errorf("head as base error = %v", err)
+	}
+	if err := run([]string{"pr", "base", "99", "main"}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("missing PR error = %v", err)
+	}
+
+	if err := f.st.UpdatePRState(f.pr.ID, "merged"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"pr", "base", "1", "main"}); err == nil || !strings.Contains(err.Error(), "merged") {
+		t.Errorf("merged error = %v", err)
+	}
+}
+
 func TestPRReview(t *testing.T) {
 	f := newFixture(t)
 

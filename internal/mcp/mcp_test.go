@@ -12,6 +12,7 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"lgit/internal/server"
 	"lgit/internal/store"
 )
 
@@ -176,7 +177,7 @@ func TestToolsRegistered(t *testing.T) {
 	}
 	slices.Sort(names)
 	want := []string{"create_comment", "create_review", "get_pr", "get_unresolved_comments",
-		"list_prs", "mark_pr_ready", "reply_comment", "resolve_comment"}
+		"list_prs", "mark_pr_ready", "reply_comment", "resolve_comment", "set_pr_base"}
 	if !slices.Equal(names, want) {
 		t.Errorf("tools = %v, want %v", names, want)
 	}
@@ -368,6 +369,52 @@ func TestCreateReview(t *testing.T) {
 	})
 	if got.PR.State != "merged" {
 		t.Errorf("approve on merged PR set state to %q, want merged", got.PR.State)
+	}
+}
+
+func TestSetPRBase(t *testing.T) {
+	f := newFixture(t)
+	pr := f.createPR()
+	mustGit(t, f.dir, "checkout", "-b", "other")
+	writeFile(t, f.dir, "other.txt", "other\n")
+	mustGit(t, f.dir, "add", ".")
+	mustGit(t, f.dir, "commit", "-m", "other work")
+	mustGit(t, f.dir, "checkout", "main")
+
+	got := callOK[server.SetBaseResult](t, f.cs, "set_pr_base", map[string]any{"number": 1, "base": "other"})
+	if got.PR.BaseRef != "other" || got.PreviousBase != "main" || got.ApprovalCleared {
+		t.Errorf("retarget = %+v", got)
+	}
+	if got.PR.BaseSHA != mustGit(t, f.dir, "rev-parse", "other") {
+		t.Errorf("base sha = %s", got.PR.BaseSHA)
+	}
+	if got.PR.HeadSHA != pr.HeadSHA {
+		t.Errorf("head sha changed: %s -> %s", pr.HeadSHA, got.PR.HeadSHA)
+	}
+
+	if err := f.st.UpdatePRState(pr.ID, "approved"); err != nil {
+		t.Fatal(err)
+	}
+	got = callOK[server.SetBaseResult](t, f.cs, "set_pr_base", map[string]any{"number": 1, "base": "main"})
+	if !got.ApprovalCleared || got.PR.State != "open" || got.PR.BaseRef != "main" {
+		t.Errorf("approval not cleared: %+v", got)
+	}
+
+	if msg := callErr(t, f.cs, "set_pr_base", map[string]any{"number": 1, "base": "nope"}); !strings.Contains(msg, "does not exist") {
+		t.Errorf("missing branch error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "set_pr_base", map[string]any{"number": 1, "base": "feature"}); !strings.Contains(msg, "PR head") {
+		t.Errorf("head as base error = %q", msg)
+	}
+	if msg := callErr(t, f.cs, "set_pr_base", map[string]any{"number": 99, "base": "main"}); !strings.Contains(msg, "not found") {
+		t.Errorf("missing PR error = %q", msg)
+	}
+
+	if err := f.st.UpdatePRState(pr.ID, "merged"); err != nil {
+		t.Fatal(err)
+	}
+	if msg := callErr(t, f.cs, "set_pr_base", map[string]any{"number": 1, "base": "other"}); !strings.Contains(msg, "merged") {
+		t.Errorf("merged error = %q", msg)
 	}
 }
 

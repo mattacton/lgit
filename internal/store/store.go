@@ -268,6 +268,20 @@ func (s *Store) UpdatePRRange(id int64, baseSHA, mergeBaseSHA, headSHA string) e
 	return err
 }
 
+// UpdatePRBase sets a PR's target branch and snapshot SHAs together, so the
+// stored range never points at the previous base.
+func (s *Store) UpdatePRBase(id int64, baseRef, baseSHA, mergeBaseSHA, headSHA string) error {
+	res, err := s.db.Exec(`UPDATE pr SET base_ref = ?, base_sha = ?, merge_base_sha = ?, head_sha = ?, updated_at = ?
+		WHERE id = ?`, baseRef, baseSHA, mergeBaseSHA, headSHA, now(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateReview inserts a review row at the PR head SHA being reviewed.
 func (s *Store) CreateReview(prID int64, verdict, body, headSHA string) (*Review, error) {
 	ts := now()

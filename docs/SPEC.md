@@ -66,6 +66,10 @@ new agent commits appear.
 - `lgit init` — create DB/schema at the common git dir.
 - `lgit pr create [--title] [--base main]` — from the current worktree: detect branch
   (`head_ref`), compute `merge-base` with base, snapshot SHAs, insert PR.
+- `lgit pr base <id> <branch>` — retarget an open PR onto another local branch and
+  recompute the diff range. CLI twin of MCP `set_pr_base`. An approved PR returns
+  to open, since the approval was for a different merge target. Merged and closed
+  PRs are rejected. Setting the current base is a no-op.
 - `lgit pr list [--state] [--json]`
 - `lgit pr view <id>` / `lgit pr comments <id> [--unresolved] [--json]` — JSON is the
   agent-facing contract.
@@ -94,7 +98,8 @@ PR dashboard → PR detail with: side-by-side + unified diff, Shiki highlighting
 tree with filter, collapse-unchanged, intra-line word diff; inline comment threads
 (`+` on any line) + PR-level comments + resolve; "viewed" checkboxes;
 **"changes since last review"** (diff only commits added since the last `review` row);
-Approve / Request changes (writes a `review` row, updates `pr.state`); outdated-thread
+Approve / Request changes (writes a `review` row, updates `pr.state`); change the
+target branch from the PR header (same rules as `lgit pr base`); outdated-thread
 badge when `anchor_sha` ≠ current `head_sha` and the anchored line changed (detect
 only, no auto-migrate in v1); Merge button — rebase-only (other modes stay CLI-only),
 with a "clean up worktree" checkbox (default on) matching `lgit merge --cleanup`.
@@ -110,10 +115,12 @@ file tree.
 `lgit mcp` (stdio, official `modelcontextprotocol/go-sdk`): `list_prs`, `get_pr`,
 `get_unresolved_comments(pr)`, `create_comment(pr, body, file?, line?)`,
 `reply_comment(thread, body)`, `resolve_comment(thread)`,
-`create_review(pr, verdict)`, `mark_pr_ready(pr)`. `create_comment` starts an
-inline thread or a PR-level note (omit file/line). `create_review` is
+`create_review(pr, verdict)`, `mark_pr_ready(pr)`, `set_pr_base(pr, base)`.
+`create_comment` starts an inline thread or a PR-level note (omit file/line).
+`create_review` is
 `approve` / `request_changes` only. There is no merge tool — merging stays
-CLI/UI for humans. `mark_pr_ready` flips `changes_requested` → `open` (no new
+CLI/UI for humans. `set_pr_base` retargets an open PR (same rules as
+`lgit pr base`). `mark_pr_ready` flips `changes_requested` → `open` (no new
 state; the review history distinguishes re-reviews). Repo/store are resolved
 per tool call so the server starts cleanly outside lgit repos (safe for
 user-wide registration). HTTP-transport MCP via `lgit serve` deferred until needed.

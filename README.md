@@ -81,6 +81,7 @@ lgit init
 
 # from a feature worktree (branch already exists)
 lgit pr create --title "Add rate limiting" --base main
+lgit pr base <number> <branch>   # retarget if it should merge elsewhere
 
 # review in the browser
 lgit serve                    # http://127.0.0.1:7333
@@ -131,7 +132,7 @@ All worktrees of a repo share `--git-common-dir`, so that single DB is visible f
 
 **Human side:** open the dashboard, review the diff, comment on lines, request changes or approve, merge when ready.
 
-**Agent side:** list open PRs, fetch unresolved threads as JSON (or via MCP), apply fixes, reply with what changed, resolve only threads actually addressed, then `lgit pr ready` so the PR is open for re-review again. Agents can also review other PRs (`lgit pr comment` / `lgit pr review`, or the MCP twins). Merging is always the human's call.
+**Agent side:** list open PRs, fetch unresolved threads as JSON (or via MCP), apply fixes, reply with what changed, resolve only threads actually addressed, then `lgit pr ready` so the PR is open for re-review again. Agents can also review other PRs (`lgit pr comment` / `lgit pr review`, or the MCP twins) and retarget one with `lgit pr base` / `set_pr_base` when it should merge into a different branch. Merging is always the human's call.
 
 ## CLI
 
@@ -139,6 +140,7 @@ All worktrees of a repo share `--git-common-dir`, so that single DB is visible f
 |---------|---------|
 | `lgit init` | Create DB + schema at the shared git dir |
 | `lgit pr create [--title] [--base main]` | Open a PR from the current worktree |
+| `lgit pr base <n> <branch>` | Change a PR's target branch |
 | `lgit pr list [--state] [--json]` | List PRs |
 | `lgit pr view <n>` | Show one PR |
 | `lgit pr comments <n> [--unresolved] [--json]` | List threads (JSON = agent contract) |
@@ -165,6 +167,7 @@ All worktrees of a repo share `--git-common-dir`, so that single DB is visible f
 - `resolve_comment`
 - `create_review`
 - `mark_pr_ready`
+- `set_pr_base`
 
 There is no merge tool. Merging stays CLI/UI for humans.
 
